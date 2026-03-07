@@ -2,11 +2,15 @@
 
 Use ChatGPT Codex models through OAuth inside LangChainJS and LangGraph.
 
+In practice, this means you can connect the Codex access attached to your ChatGPT account - including ChatGPT Plus, Pro, Business, and Enterprise accounts when Codex is enabled - to LangChainJS and LangGraph without using an OpenAI API key.
+
 > [!IMPORTANT]
 > This project is still in active development. Expect bugs, rough edges, and occasional breaking changes while the package stabilizes. [Issues](https://github.com/jeph/langchainjs-codex-oauth/issues) and [pull requests](https://github.com/jeph/langchainjs-codex-oauth/pulls) are very welcome.
 
 ## What it does
 
+- Lets you use the Codex-capable models available in your ChatGPT account from LangChainJS and LangGraph.
+- Reuses ChatGPT plan access instead of requiring OpenAI API billing or an API key.
 - Exposes a `ChatCodexOAuth` chat model implemented in TypeScript.
 - Authenticates locally with ChatGPT OAuth instead of an API key.
 - Stores credentials under `~/.langchainjs-codex-oauth/` by default.
@@ -14,12 +18,30 @@ Use ChatGPT Codex models through OAuth inside LangChainJS and LangGraph.
 - Streams text responses and tool-call chunks from the ChatGPT Codex backend.
 - Supports direct `bindTools(...)`, `withStructuredOutput(...)`, LangChain agents, and LangGraph workflows.
 
+## What this is, in plain English
+
+- If you can use Codex from your ChatGPT account, this package lets your LangChainJS or LangGraph code use that same account access.
+- It is useful for people who already pay for ChatGPT plans such as Plus, Pro, Business, or Enterprise and want to experiment with LangChainJS or LangGraph without switching to the API platform first.
+- It does not turn a ChatGPT subscription into the official OpenAI API. It is an adapter around ChatGPT OAuth and the Codex access available to that account.
+- Availability still depends on whether OpenAI has enabled Codex and the requested models for your plan or workspace.
+
 ## Requirements
 
 - Node.js `>=20`
-- A ChatGPT account with access to Codex-capable models
+- A ChatGPT account with access to Codex-capable models, such as a Plus, Pro, Business, or Enterprise account with Codex enabled
+
+## Compliance note
+
+> [!CAUTION]
+> This package is unofficial and is not legal advice.
+>
+> I could not find OpenAI documentation that explicitly says ChatGPT OAuth account access is approved for general-purpose third-party automation through LangChainJS or LangGraph. OpenAI's [Terms of Use](https://openai.com/policies/terms-of-use/) currently restrict activities such as "automatically or programmatically extract data or Output" and "circumvent any rate limits or restrictions or bypass any protective measures or safety mitigations," and this package relies on undocumented ChatGPT/Codex endpoints rather than the official API platform.
+>
+> Because of that, use of this project may be unsupported, a gray area, or inconsistent with OpenAI terms or workspace policies depending on how you use it and what kind of account you use. Review the current OpenAI [Terms of Use](https://openai.com/policies/terms-of-use/), [Service Terms](https://openai.com/policies/service-terms/), and any Business or Enterprise admin policies before using it in production or on an organization-managed workspace.
 
 ## Install
+
+Before installing, make sure the account you plan to use can already access Codex in ChatGPT or the Codex app. This package does not grant Codex access on its own.
 
 For the core library:
 
@@ -27,19 +49,34 @@ For the core library:
 pnpm add langchainjs-codex-oauth @langchain/core
 ```
 
-Optional packages used by the examples in this README:
+Add these only if you want the examples or higher-level helpers shown in this README:
 
 ```bash
 pnpm add langchain @langchain/langgraph zod
 ```
 
+Notes:
+
+- You do not need an OpenAI API key for this package.
+- You do not need the `openai` SDK unless your app also talks to the official OpenAI API separately.
+- `langchainjs-codex-oauth` is for ChatGPT-account-backed Codex access. If you want the official API platform instead, use the OpenAI API directly.
+
 ## Authenticate
+
+Authenticate once on the machine where you want to run LangChainJS or LangGraph with your ChatGPT account:
 
 ```bash
 npx langchainjs-codex-oauth auth login
 ```
 
-If your browser cannot open automatically, localhost port `1455` is busy, or you want to finish the OAuth flow by hand:
+What this does:
+
+- Opens the ChatGPT/OpenAI OAuth flow in your browser
+- Signs in with the ChatGPT account whose Codex access you want to use
+- Stores OAuth credentials locally so your code can reuse them without an API key
+- Refreshes expired access tokens automatically later
+
+If your browser cannot open automatically, localhost port `1455` is busy, your workspace requires a different browser/session, or you want to finish the OAuth flow by hand:
 
 ```bash
 npx langchainjs-codex-oauth auth login --manual
@@ -65,7 +102,9 @@ Notes:
 - The automatic flow starts a local callback server at `http://localhost:1455/auth/callback`.
 - `auth login --manual` accepts either the full redirect URL or the raw authorization code.
 - Credentials are stored in `~/.langchainjs-codex-oauth/auth/openai.json` by default.
+- That auth file gives local access to your ChatGPT/Codex session for this package, so treat it like a secret.
 - Expired access tokens are refreshed automatically and written back to the auth file.
+- If you use ChatGPT Business or Enterprise, make sure your workspace permits Codex access and local OAuth sign-in before relying on this setup.
 
 ## Quickstart
 
@@ -228,7 +267,8 @@ This runs the full release gate: clean, lint, typecheck, unit tests, live integr
 
 - This package is Node-only.
 - The package keeps its own auth store and does not read Codex/OpenCode credential files.
-- The backend uses undocumented ChatGPT consumer endpoints, so compatibility may require updates over time.
+- The backend uses undocumented ChatGPT/Codex endpoints, so compatibility may require updates over time.
+- This project is best understood as an unofficial bridge from ChatGPT account access to LangChainJS/LangGraph, not as a replacement for the official OpenAI API.
 
 ## Contributing
 
