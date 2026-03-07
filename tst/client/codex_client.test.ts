@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { CodexClient } from "../codex_client.js";
+import { CodexClient } from "../../src/client/codex_client.js";
 
 describe("CodexClient errors", () => {
   test("maps usage-limit 404 responses to 429", async () => {

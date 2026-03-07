@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { NotAuthenticatedError } from "../../errors.js";
-import { AuthStore } from "../store.js";
+import { NotAuthenticatedError } from "../../src/errors.js";
+import { AuthStore } from "../../src/auth/store.js";
 
 describe("AuthStore", () => {
   test("saves and loads credentials", async () => {

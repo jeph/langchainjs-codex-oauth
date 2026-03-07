@@ -6,8 +6,8 @@ import { createAgent } from "langchain";
 import { describe, expect, test } from "vitest";
 import { z } from "zod";
 
-import { defaultAuthPath } from "../../auth/store.js";
-import { ChatCodexOAuth } from "../index.js";
+import { defaultAuthPath } from "../../src/auth/store.js";
+import { ChatCodexOAuth } from "../../src/chat_models/index.js";
 
 const hasAuth = existsSync(defaultAuthPath());
 

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   getCodexInstructions,
   INSTRUCTIONS_MODE_ENV,
-} from "../instructions.js";
+} from "../../src/client/instructions.js";
 
 describe("instruction resolution", () => {
   afterEach(() => {

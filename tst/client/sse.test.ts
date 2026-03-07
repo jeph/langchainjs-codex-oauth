@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { extractTextDelta, isTerminalEvent, iterSseEvents } from "../sse.js";
+import {
+  extractTextDelta,
+  isTerminalEvent,
+  iterSseEvents,
+} from "../../src/client/sse.js";
 
 function streamFromText(text: string): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();

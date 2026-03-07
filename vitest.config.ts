@@ -10,8 +10,9 @@ export default defineConfig((env) => ({
     exclude:
       env.mode === "int"
         ? configDefaults.exclude
-        : ["**/*.int.test.ts", ...configDefaults.exclude],
-    include: env.mode === "int" ? ["**/*.int.test.ts"] : configDefaults.include,
+        : ["tst/**/*.int.test.ts", ...configDefaults.exclude],
+    include:
+      env.mode === "int" ? ["tst/**/*.int.test.ts"] : ["tst/**/*.test.ts"],
     hideSkippedTests: true,
     testTimeout: env.mode === "int" ? 120_000 : 30_000,
     typecheck: {

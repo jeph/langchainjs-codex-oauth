@@ -2,7 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { describe, expect, test } from "vitest";
 
-import { REDIRECT_URI, runLocalCallbackServer } from "../oauth.js";
+import { REDIRECT_URI, runLocalCallbackServer } from "../../src/auth/oauth.js";
 
 async function deliverCallback(query: string): Promise<void> {
   const callbackUrl = `${REDIRECT_URI}?${query}`;

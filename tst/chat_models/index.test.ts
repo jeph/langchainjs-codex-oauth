@@ -1,7 +1,7 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { describe, expect, test, vi } from "vitest";
 
-import { ChatCodexOAuth } from "../index.js";
+import { ChatCodexOAuth } from "../../src/chat_models/index.js";
 
 describe("ChatCodexOAuth", () => {
   test("truncates stop sequences on invoke", async () => {
