@@ -512,6 +512,7 @@ export class ChatCodexOAuth extends BaseChatModel<
       (max, item) => Math.max(max, item.length),
       0,
     )
+    const itemIds = new Map<string, string>()
     const names = new Map<string, string | undefined>()
     const indexes = new Map<string, number>()
     let buffer = ""
@@ -558,6 +559,10 @@ export class ChatCodexOAuth extends BaseChatModel<
       const added = extractToolCallItemAdded(event)
 
       if (added && !stopped) {
+        if (added.itemId) {
+          itemIds.set(added.itemId, added.callId)
+        }
+
         names.set(added.callId, added.name)
         indexes.set(added.callId, added.outputIndex)
         continue
@@ -566,20 +571,28 @@ export class ChatCodexOAuth extends BaseChatModel<
       const args = extractToolCallArgsDelta(event)
 
       if (args && !stopped) {
-        if (!indexes.has(args.callId)) {
-          indexes.set(args.callId, args.outputIndex)
+        const callId =
+          args.callId ??
+          (args.itemId ? itemIds.get(args.itemId) : undefined)
+
+        if (!callId) {
+          continue
         }
 
-        if (!names.has(args.callId)) {
-          names.set(args.callId, undefined)
+        if (!indexes.has(callId)) {
+          indexes.set(callId, args.outputIndex)
+        }
+
+        if (!names.has(callId)) {
+          names.set(callId, undefined)
         }
 
         const toolCallChunk: ToolCallChunk = {
           type: "tool_call_chunk",
-          id: args.callId,
-          name: names.get(args.callId),
+          id: callId,
+          name: names.get(callId),
           args: args.delta,
-          index: indexes.get(args.callId),
+          index: indexes.get(callId),
         }
         const chunk = new ChatGenerationChunk({
           message: new AIMessageChunk({

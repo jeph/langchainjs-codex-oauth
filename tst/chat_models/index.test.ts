@@ -235,6 +235,72 @@ describe("ChatCodexOAuth", () => {
     expect(chunks.at(-1)?.tool_calls?.[0]?.id).toBe("call_123")
   })
 
+  test("maps item_id tool deltas to the final call_id while streaming", async () => {
+    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+
+    vi.spyOn(model.client, "streamEvents").mockImplementation(
+      async function* () {
+        yield {
+          type: "response.output_item.added",
+          output_index: 1,
+          item: {
+            id: "fc_123",
+            type: "function_call",
+            call_id: "call_123",
+            name: "Answer",
+          },
+        }
+        yield {
+          type: "response.function_call_arguments.delta",
+          output_index: 1,
+          item_id: "fc_123",
+          delta: '{"',
+        }
+        yield {
+          type: "response.function_call_arguments.delta",
+          output_index: 1,
+          item_id: "fc_123",
+          delta: 'answer":"hi"}',
+        }
+        yield {
+          type: "response.done",
+          response: {
+            output: [
+              {
+                type: "function_call",
+                call_id: "call_123",
+                name: "Answer",
+                arguments: '{"answer":"hi"}',
+              },
+            ],
+            status: "completed",
+          },
+        }
+      },
+    )
+
+    const chunks = []
+
+    for await (const chunk of await model.stream([new HumanMessage("hi")])) {
+      chunks.push(chunk)
+    }
+
+    const deltaChunks = chunks.filter(
+      (chunk) =>
+        Array.isArray(chunk.tool_call_chunks) &&
+        chunk.tool_call_chunks.length > 0,
+    )
+    const streamedArgs = deltaChunks.flatMap((chunk) =>
+      chunk.tool_call_chunks?.map((toolCallChunk) => toolCallChunk.args ?? "") ??
+      [],
+    )
+
+    expect(deltaChunks).toHaveLength(2)
+    expect(deltaChunks[0]?.tool_call_chunks?.[0]?.id).toBe("call_123")
+    expect(JSON.parse(streamedArgs.join(""))).toEqual({ answer: "hi" })
+    expect(chunks.at(-1)?.tool_calls?.[0]?.id).toBe("call_123")
+  })
+
   test("truncates stop sequences while streaming", async () => {
     const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
 

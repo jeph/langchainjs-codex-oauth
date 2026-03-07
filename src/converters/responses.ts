@@ -212,6 +212,7 @@ export function extractToolCallItemAdded(event: Record<string, unknown>):
   | {
       outputIndex: number
       callId: string
+      itemId?: string
       name?: string
     }
   | undefined {
@@ -241,6 +242,7 @@ export function extractToolCallItemAdded(event: Record<string, unknown>):
   return {
     outputIndex,
     callId,
+    itemId: asString(event.item.id),
     name: asString(event.item.name),
   }
 }
@@ -248,7 +250,8 @@ export function extractToolCallItemAdded(event: Record<string, unknown>):
 export function extractToolCallArgsDelta(event: Record<string, unknown>):
   | {
       outputIndex: number
-      callId: string
+      callId?: string
+      itemId?: string
       delta: string
     }
   | undefined {
@@ -258,15 +261,17 @@ export function extractToolCallArgsDelta(event: Record<string, unknown>):
 
   const outputIndex = asInteger(event.output_index)
   const callId = asString(event.call_id)
+  const itemId = asString(event.item_id)
   const delta = asString(event.delta)
 
-  if (outputIndex === undefined || !callId || !delta) {
+  if (outputIndex === undefined || (!callId && !itemId) || !delta) {
     return undefined
   }
 
   return {
     outputIndex,
-    callId,
+    ...(callId ? { callId } : {}),
+    ...(itemId ? { itemId } : {}),
     delta,
   }
 }

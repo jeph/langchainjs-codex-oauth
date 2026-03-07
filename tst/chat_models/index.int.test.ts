@@ -130,7 +130,7 @@ describe.skipIf(!hasAuth)("ChatCodexOAuth live integration", () => {
     expect(textOf(final.content)).toContain("42")
   })
 
-  test("streams a tool-calling response from the live backend", async () => {
+  test("streams tool call chunks from the live backend", async () => {
     const add = createAddTool()
     const model = createModel({ maxTokens: 160 }).bindTools([add], {
       tool_choice: "add_numbers",
@@ -147,8 +147,26 @@ describe.skipIf(!hasAuth)("ChatCodexOAuth live integration", () => {
       (acc, chunk) => (acc ? acc.concat(chunk) : chunk),
       null,
     )
+    const deltaChunks = chunks.filter(
+      (chunk) => (chunk.tool_call_chunks?.length ?? 0) > 0,
+    )
+    const streamedArgs = deltaChunks.flatMap((chunk) =>
+      chunk.tool_call_chunks?.map((toolCallChunk) => toolCallChunk.args ?? "") ??
+      [],
+    )
+    const finalCallId = full?.tool_calls?.[0]?.id
 
+    expect(deltaChunks.length).toBeGreaterThan(0)
     expect(full?.tool_calls?.[0]?.name).toBe("add_numbers")
+    expect(finalCallId).toBeTruthy()
+    expect(
+      deltaChunks.every((chunk) =>
+        chunk.tool_call_chunks?.every(
+          (toolCallChunk) => toolCallChunk.id === finalCallId,
+        ),
+      ),
+    ).toBe(true)
+    expect(JSON.parse(streamedArgs.join(""))).toEqual({ a: 19, b: 23 })
   })
 
   test("returns parsed structured output from withStructuredOutput", async () => {
