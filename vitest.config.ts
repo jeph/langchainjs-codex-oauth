@@ -1,5 +1,10 @@
+import { readFileSync } from "node:fs"
+
 import { configDefaults, defineConfig } from "vitest/config"
-import pkg from "./package.json" with { type: "json" }
+
+const pkg = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+) as { version: string }
 
 function includeForMode(mode: string): string[] {
   if (mode === "int") {

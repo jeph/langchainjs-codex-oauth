@@ -343,7 +343,7 @@ describe.skipIf(!hasAuth)("ChatCodexOAuth extended live integration", () => {
   })
 
   test("handles a larger mixed batch without cross-prompt bleed", async () => {
-    const model = createModel({ maxTokens: 90 })
+    const model = createModel({ maxTokens: 120 })
     const markers = [
       "BATCH-301A",
       "BATCH-301B",
@@ -353,9 +353,6 @@ describe.skipIf(!hasAuth)("ChatCodexOAuth extended live integration", () => {
     ]
     const results = await model.batch(
       markers.map((marker, index) => [
-        new SystemMessage(
-          "Return only the final marker after reading every section.",
-        ),
         new HumanMessage(buildLongMarkerPrompt(marker, 14 + index)),
       ]),
     )

@@ -5,13 +5,13 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.0.0"
   },
   "bin": {
     "langchainjs-codex-oauth": "./bin/langchainjs-codex-oauth.js"
   },
   "scripts": {
-    "build": "tsdown",
+    "build": "tsup",
     "clean": "node -e \"import('node:fs').then(fs => fs.rmSync('dist', { force: true, recursive: true }))\"",
     "prebuild": "pnpm run clean && pnpm run lint && pnpm run typecheck",
     "typecheck": "tsc --noEmit",
@@ -38,23 +38,23 @@
   "devDependencies": {
     "@langchain/core": "^1.1.31",
     "@langchain/langgraph": "^1.2.1",
-    "@eslint/js": "^10.0.1",
-    "@types/node": "^24.3.0",
-    "eslint": "^10.0.2",
-    "globals": "^17.3.0",
+    "@eslint/js": "^8.57.1",
+    "@types/node": "^25.3.5",
+    "eslint": "^8.57.1",
+    "globals": "^17.4.0",
     "langchain": "^1.2.30",
-    "prettier": "^3.5.0",
-    "tsdown": "^0.20.3",
+    "prettier": "^3.8.1",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.3",
-    "typescript-eslint": "^8.56.1",
-    "vitest": "^3.2.4",
-    "zod": "^3.25.76"
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^7.18.0",
+    "vitest": "^4.0.18",
+    "zod": "^4.3.6"
   },
   "exports": {
     ".": {
       "import": {
-        "types": "./dist/index.d.mts",
+        "types": "./dist/index.d.ts",
         "default": "./dist/index.mjs"
       },
       "require": {
@@ -72,5 +72,5 @@
   ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
-  "types": "./dist/index.d.mts"
+  "types": "./dist/index.d.ts"
 }
