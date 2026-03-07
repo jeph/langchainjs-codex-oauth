@@ -1,5 +1,10 @@
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  HumanMessage,
+  SystemMessage,
+} from "@langchain/core/messages";
 import { describe, expect, test, vi } from "vitest";
+import { z } from "zod";
 
 import { ChatCodexOAuth } from "../../src/chat_models/index.js";
 
@@ -92,6 +97,82 @@ describe("ChatCodexOAuth", () => {
       reasoningSummary: "brief",
       textVerbosity: "high",
       include: ["custom.include"],
+    });
+  });
+
+  test("parses direct withStructuredOutput without includeRaw", async () => {
+    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" });
+    const ContactInfo = z.object({
+      name: z.string(),
+      email: z.string(),
+    });
+
+    vi.spyOn(model.client, "completeWithResponse").mockResolvedValue({
+      parsed: {
+        content: "",
+        toolCalls: [
+          {
+            type: "tool_call",
+            name: "extract",
+            args: {
+              name: "Jane Roe",
+              email: "jane@example.com",
+            },
+          },
+        ],
+        invalidToolCalls: [],
+      },
+      response: { output: [], status: "completed" },
+    });
+
+    const result = await model
+      .withStructuredOutput(ContactInfo)
+      .invoke([new HumanMessage("Extract the contact info.")]);
+
+    expect(result).toEqual({
+      name: "Jane Roe",
+      email: "jane@example.com",
+    });
+  });
+
+  test("parses direct withStructuredOutput with includeRaw", async () => {
+    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" });
+    const ContactInfo = z.object({
+      name: z.string(),
+      email: z.string(),
+    });
+
+    vi.spyOn(model.client, "completeWithResponse").mockResolvedValue({
+      parsed: {
+        content: "",
+        toolCalls: [
+          {
+            type: "tool_call",
+            name: "extract",
+            args: {
+              name: "Jane Roe",
+              email: "jane@example.com",
+            },
+          },
+        ],
+        invalidToolCalls: [],
+      },
+      response: { output: [], status: "completed" },
+    });
+
+    const result = await model
+      .withStructuredOutput(ContactInfo, { includeRaw: true })
+      .invoke([new HumanMessage("Extract the contact info.")]);
+
+    expect(AIMessage.isInstance(result.raw)).toBe(true);
+    expect(
+      AIMessage.isInstance(result.raw)
+        ? result.raw.tool_calls?.[0]?.name
+        : null,
+    ).toBe("extract");
+    expect(result.parsed).toEqual({
+      name: "Jane Roe",
+      email: "jane@example.com",
     });
   });
 

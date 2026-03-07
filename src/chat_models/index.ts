@@ -4,7 +4,14 @@ import {
   type BindToolsInput,
   type LangSmithParams,
 } from "@langchain/core/language_models/chat_models";
-import type { BaseLanguageModelInput } from "@langchain/core/language_models/base";
+import {
+  assembleStructuredOutputPipeline,
+  createFunctionCallingParser,
+} from "@langchain/core/language_models/structured_output";
+import type {
+  BaseLanguageModelInput,
+  StructuredOutputMethodOptions,
+} from "@langchain/core/language_models/base";
 import {
   AIMessage,
   AIMessageChunk,
@@ -14,6 +21,17 @@ import {
 import { ChatGenerationChunk, type ChatResult } from "@langchain/core/outputs";
 import { Runnable } from "@langchain/core/runnables";
 import { getEnvironmentVariable } from "@langchain/core/utils/env";
+import { toJsonSchema } from "@langchain/core/utils/json_schema";
+import {
+  isSerializableSchema,
+  type SerializableSchema,
+} from "@langchain/core/utils/standard_schema";
+import {
+  getSchemaDescription,
+  isInteropZodSchema,
+  type InteropZodType,
+} from "@langchain/core/utils/types";
+import type { ZodType } from "zod";
 
 import { AuthStore } from "../auth/store.js";
 import { CodexClient } from "../client/codex_client.js";
@@ -234,6 +252,124 @@ export class ChatCodexOAuth extends BaseChatModel<
       ),
       tools: convertTools(tools) as BindToolsInput[],
     } as Partial<ChatCodexOAuthCallOptions>);
+  }
+
+  override withStructuredOutput<RunOutput extends Record<string, any>>(
+    outputSchema: SerializableSchema<RunOutput>,
+    config?: StructuredOutputMethodOptions<false>,
+  ): Runnable<BaseLanguageModelInput, RunOutput>;
+  override withStructuredOutput<RunOutput extends Record<string, any>>(
+    outputSchema: SerializableSchema<RunOutput>,
+    config?: StructuredOutputMethodOptions<true>,
+  ): Runnable<
+    BaseLanguageModelInput,
+    {
+      raw: BaseMessage;
+      parsed: RunOutput;
+    }
+  >;
+  override withStructuredOutput<RunOutput extends Record<string, any>>(
+    outputSchema: InteropZodType<RunOutput> | Record<string, any>,
+    config?: StructuredOutputMethodOptions<false>,
+  ): Runnable<BaseLanguageModelInput, RunOutput>;
+  override withStructuredOutput<RunOutput extends Record<string, any>>(
+    outputSchema: InteropZodType<RunOutput> | Record<string, any>,
+    config?: StructuredOutputMethodOptions<true>,
+  ): Runnable<
+    BaseLanguageModelInput,
+    {
+      raw: BaseMessage;
+      parsed: RunOutput;
+    }
+  >;
+  override withStructuredOutput<RunOutput extends Record<string, any>>(
+    outputSchema: ZodType<RunOutput> | Record<string, any>,
+    config?: StructuredOutputMethodOptions<false>,
+  ): Runnable<BaseLanguageModelInput, RunOutput>;
+  override withStructuredOutput<RunOutput extends Record<string, any>>(
+    outputSchema: ZodType<RunOutput> | Record<string, any>,
+    config?: StructuredOutputMethodOptions<true>,
+  ): Runnable<
+    BaseLanguageModelInput,
+    {
+      raw: BaseMessage;
+      parsed: RunOutput;
+    }
+  >;
+  override withStructuredOutput<RunOutput extends Record<string, any>>(
+    outputSchema:
+      | SerializableSchema<RunOutput>
+      | InteropZodType<RunOutput>
+      | ZodType<RunOutput>
+      | Record<string, any>,
+    config?: StructuredOutputMethodOptions<boolean>,
+  ):
+    | Runnable<BaseLanguageModelInput, RunOutput>
+    | Runnable<
+        BaseLanguageModelInput,
+        {
+          raw: BaseMessage;
+          parsed: RunOutput;
+        }
+      > {
+    if (config?.strict) {
+      throw new Error(
+        '"strict" mode is not supported for this model by default.',
+      );
+    }
+
+    if (config?.method === "jsonMode") {
+      throw new Error(
+        'Base withStructuredOutput implementation only supports "functionCalling" as a method.',
+      );
+    }
+
+    const schema = outputSchema;
+    const description =
+      getSchemaDescription(schema) ?? "A function available to call.";
+    let functionName = config?.name ?? "extract";
+
+    if (
+      !isInteropZodSchema(schema) &&
+      !isSerializableSchema(schema) &&
+      typeof schema === "object" &&
+      schema !== null &&
+      "name" in schema &&
+      typeof schema.name === "string"
+    ) {
+      functionName = schema.name;
+    }
+
+    const asJsonSchema =
+      isInteropZodSchema(schema) || isSerializableSchema(schema)
+        ? toJsonSchema(schema)
+        : schema;
+    const tools = [
+      {
+        type: "function" as const,
+        function: {
+          name: functionName,
+          description,
+          parameters: asJsonSchema,
+        },
+      },
+    ];
+    const outputParser = createFunctionCallingParser(schema, functionName);
+
+    return assembleStructuredOutputPipeline(
+      this.bindTools(tools),
+      outputParser,
+      config?.includeRaw,
+      config?.includeRaw ? "StructuredOutputRunnable" : "StructuredOutput",
+    ) as
+      | Runnable<BaseLanguageModelInput, RunOutput>
+      | Runnable<
+          BaseLanguageModelInput,
+          {
+            raw: BaseMessage;
+            parsed: RunOutput;
+          }
+        >;
   }
 
   private buildRequestState(

@@ -152,6 +152,30 @@ describe.skipIf(!hasAuth)("ChatCodexOAuth live integration", () => {
     expect(full?.tool_calls?.[0]?.name).toBe("add_numbers");
   });
 
+  test("returns parsed structured output from withStructuredOutput", async () => {
+    const ContactInfo = z.object({
+      name: z.string(),
+      email: z.string(),
+    });
+    const model = createModel({ maxTokens: 120 }).withStructuredOutput(
+      ContactInfo,
+      { includeRaw: true },
+    );
+
+    const result = await model.invoke(
+      "Extract the contact info from: Jane Roe, jane@example.com.",
+    );
+
+    expect(AIMessage.isInstance(result.raw)).toBe(true);
+    expect(
+      AIMessage.isInstance(result.raw)
+        ? result.raw.tool_calls?.[0]?.name
+        : null,
+    ).toBe("extract");
+    expect(result.parsed.name.toLowerCase()).toContain("jane");
+    expect(result.parsed.email.toLowerCase()).toContain("jane@example.com");
+  });
+
   test("works in a LangGraph-backed agent loop", async () => {
     const add = createAddTool();
 
