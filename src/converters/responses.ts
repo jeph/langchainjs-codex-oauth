@@ -7,6 +7,124 @@ import type {
 } from "../client/types.js"
 import { asInteger, asString, isRecord } from "../utils/json.js"
 
+interface ParsedToolCallResult {
+  toolCall?: CodexToolCall
+  invalidToolCall?: CodexInvalidToolCall
+}
+
+function outputItems(
+  response: Record<string, unknown>,
+): Record<string, unknown>[] {
+  return Array.isArray(response.output) ? response.output.filter(isRecord) : []
+}
+
+function textPartsFromItem(item: Record<string, unknown>): string[] {
+  if (item.type !== "message") {
+    return []
+  }
+
+  if (typeof item.content === "string") {
+    return [item.content]
+  }
+
+  if (!Array.isArray(item.content)) {
+    return []
+  }
+
+  return item.content.flatMap((block) =>
+    isRecord(block) &&
+    (block.type === "output_text" || block.type === "text") &&
+    typeof block.text === "string"
+      ? [block.text]
+      : [],
+  )
+}
+
+function parseToolCall(item: Record<string, unknown>): ParsedToolCallResult {
+  if (item.type !== "function_call") {
+    return {}
+  }
+
+  const id = asString(item.call_id) ?? asString(item.id)
+  const name = asString(item.name)
+
+  if (!name) {
+    return {}
+  }
+
+  if (isRecord(item.arguments)) {
+    return {
+      toolCall: {
+        type: "tool_call",
+        id,
+        name,
+        args: item.arguments,
+      },
+    }
+  }
+
+  if (typeof item.arguments !== "string") {
+    return {
+      invalidToolCall: {
+        type: "invalid_tool_call",
+        id,
+        name,
+        error: "missing tool call arguments",
+      },
+    }
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(item.arguments)
+
+    if (!isRecord(parsed)) {
+      throw new Error("arguments must be a JSON object")
+    }
+
+    return {
+      toolCall: {
+        type: "tool_call",
+        id,
+        name,
+        args: parsed,
+      },
+    }
+  } catch (error) {
+    return {
+      invalidToolCall: {
+        type: "invalid_tool_call",
+        id,
+        name,
+        args: item.arguments,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }
+  }
+}
+
+function finishReason(response: Record<string, unknown>): string | undefined {
+  const explicit = asString(response.finish_reason)
+
+  if (explicit) {
+    return explicit
+  }
+
+  if (isRecord(response.incomplete_details)) {
+    const reason = asString(response.incomplete_details.reason)
+
+    if (reason) {
+      return reason.includes("token") ? "length" : reason
+    }
+  }
+
+  if (outputItems(response).some((item) => item.type === "function_call")) {
+    return "tool_calls"
+  }
+
+  const status = asString(response.status)
+  return status === "completed" || status === "done" ? "stop" : undefined
+}
+
 export function parseAssistantMessage(
   response: unknown,
 ): ParsedAssistantMessage {
@@ -18,101 +136,20 @@ export function parseAssistantMessage(
     }
   }
 
-  const textParts: string[] = []
-  const toolCalls: CodexToolCall[] = []
-  const invalidToolCalls: CodexInvalidToolCall[] = []
-
-  if (Array.isArray(response.output)) {
-    for (const item of response.output) {
-      if (!isRecord(item)) {
-        continue
-      }
-
-      if (item.type === "message") {
-        if (typeof item.content === "string") {
-          textParts.push(item.content)
-          continue
-        }
-
-        if (Array.isArray(item.content)) {
-          for (const block of item.content) {
-            if (!isRecord(block)) {
-              continue
-            }
-
-            if (
-              (block.type === "output_text" || block.type === "text") &&
-              typeof block.text === "string"
-            ) {
-              textParts.push(block.text)
-            }
-          }
-        }
-      }
-
-      if (item.type === "function_call") {
-        const id = asString(item.call_id) ?? asString(item.id)
-        const name = asString(item.name)
-
-        if (!name) {
-          continue
-        }
-
-        if (isRecord(item.arguments)) {
-          toolCalls.push({
-            type: "tool_call",
-            id,
-            name,
-            args: item.arguments,
-          })
-          continue
-        }
-
-        if (typeof item.arguments === "string") {
-          try {
-            const parsed: unknown = JSON.parse(item.arguments)
-
-            if (!isRecord(parsed)) {
-              throw new Error("arguments must be a JSON object")
-            }
-
-            toolCalls.push({
-              type: "tool_call",
-              id,
-              name,
-              args: parsed,
-            })
-          } catch (error) {
-            invalidToolCalls.push({
-              type: "invalid_tool_call",
-              id,
-              name,
-              args: item.arguments,
-              error: error instanceof Error ? error.message : String(error),
-            })
-          }
-
-          continue
-        }
-
-        invalidToolCalls.push({
-          type: "invalid_tool_call",
-          id,
-          name,
-          error: "missing tool call arguments",
-        })
-      }
-    }
-  }
-
-  if (textParts.length === 0 && typeof response.output_text === "string") {
-    textParts.push(response.output_text)
-  }
+  const items = outputItems(response)
+  const textParts = items.flatMap(textPartsFromItem)
+  const parsedToolCalls = items.map(parseToolCall)
+  const fallbackText =
+    textParts.length === 0 ? asString(response.output_text) : undefined
 
   return {
-    content: textParts.join(""),
-    toolCalls,
-    invalidToolCalls,
+    content: [...textParts, ...(fallbackText ? [fallbackText] : [])].join(""),
+    toolCalls: parsedToolCalls.flatMap(({ toolCall }) =>
+      toolCall ? [toolCall] : [],
+    ),
+    invalidToolCalls: parsedToolCalls.flatMap(({ invalidToolCall }) =>
+      invalidToolCall ? [invalidToolCall] : [],
+    ),
   }
 }
 
@@ -123,59 +160,19 @@ export function extractResponseMetadata(
     return {}
   }
 
-  const metadata: Record<string, unknown> = {}
   const id = asString(response.id)
   const model = asString(response.model)
   const status = asString(response.status)
   const createdAt = asInteger(response.created_at)
-  const finishReason = asString(response.finish_reason)
+  const resolvedFinishReason = finishReason(response)
 
-  if (id) {
-    metadata.id = id
+  return {
+    ...(id ? { id } : {}),
+    ...(model ? { model } : {}),
+    ...(status ? { status } : {}),
+    ...(createdAt !== undefined ? { created_at: createdAt } : {}),
+    ...(resolvedFinishReason ? { finish_reason: resolvedFinishReason } : {}),
   }
-
-  if (model) {
-    metadata.model = model
-  }
-
-  if (status) {
-    metadata.status = status
-  }
-
-  if (createdAt !== undefined) {
-    metadata.created_at = createdAt
-  }
-
-  if (finishReason) {
-    metadata.finish_reason = finishReason
-    return metadata
-  }
-
-  const hasToolCalls = Array.isArray(response.output)
-    ? response.output.some(
-        (item) => isRecord(item) && item.type === "function_call",
-      )
-    : false
-
-  if (isRecord(response.incomplete_details)) {
-    const reason = asString(response.incomplete_details.reason)
-
-    if (reason) {
-      metadata.finish_reason = reason.includes("token") ? "length" : reason
-      return metadata
-    }
-  }
-
-  if (hasToolCalls) {
-    metadata.finish_reason = "tool_calls"
-    return metadata
-  }
-
-  if (status === "completed" || status === "done") {
-    metadata.finish_reason = "stop"
-  }
-
-  return metadata
 }
 
 export function extractUsageMetadata(

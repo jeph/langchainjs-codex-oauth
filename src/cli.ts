@@ -52,108 +52,142 @@ function parseLoginArgs(args: string[]): {
   manual: boolean
   timeoutMs: number
 } {
-  let manual = false
-  let timeoutMs = 180_000
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]
-
-    if (arg === "--manual") {
-      manual = true
-      continue
-    }
-
-    if (arg === "--timeout-s") {
-      const raw = args[index + 1]
-
-      if (!raw) {
-        throw new OAuthFlowError("Missing value for --timeout-s.")
+  const parsed = args.reduce(
+    (state, arg, index) => {
+      if (state.skipNext) {
+        return { ...state, skipNext: false }
       }
 
-      const seconds = Number.parseInt(raw, 10)
-
-      if (!Number.isInteger(seconds) || seconds <= 0) {
-        throw new OAuthFlowError("--timeout-s must be a positive integer.")
+      if (arg === "--manual") {
+        return { ...state, manual: true }
       }
 
-      timeoutMs = seconds * 1000
-      index += 1
-      continue
-    }
+      if (arg === "--timeout-s") {
+        const raw = args[index + 1]
 
-    throw new OAuthFlowError(`Unknown argument: ${arg}`)
+        if (!raw) {
+          throw new OAuthFlowError("Missing value for --timeout-s.")
+        }
+
+        const seconds = Number.parseInt(raw, 10)
+
+        if (!Number.isInteger(seconds) || seconds <= 0) {
+          throw new OAuthFlowError("--timeout-s must be a positive integer.")
+        }
+
+        return {
+          ...state,
+          timeoutMs: seconds * 1000,
+          skipNext: true,
+        }
+      }
+
+      throw new OAuthFlowError(`Unknown argument: ${arg}`)
+    },
+    { manual: false, timeoutMs: 180_000, skipNext: false },
+  )
+
+  return {
+    manual: parsed.manual,
+    timeoutMs: parsed.timeoutMs,
+  }
+}
+
+function createLoginSession(): {
+  state: string
+  verifier: string
+  url: string
+} {
+  const pkce = generatePkce()
+  const state = createState()
+
+  return {
+    state,
+    verifier: pkce.verifier,
+    url: buildAuthorizeUrl({
+      state,
+      codeChallenge: pkce.challenge,
+    }),
+  }
+}
+
+function assertOAuthState(actual: string | undefined, expected: string): void {
+  if (!actual) {
+    throw new OAuthFlowError("OAuth state missing.")
   }
 
-  return { manual, timeoutMs }
+  if (actual !== expected) {
+    throw new OAuthFlowError("OAuth state mismatch.")
+  }
+}
+
+async function authorizeManually(session: {
+  state: string
+  verifier: string
+  url: string
+}): Promise<{ code: string; verifier: string }> {
+  stdout.write(
+    `Open this URL in your browser and complete login:\n\n${session.url}\n\n`,
+  )
+  const pasted = await prompt(
+    "Paste the full redirect URL or authorization code here:\n> ",
+  )
+  const parsed = parseAuthorizationInput(pasted)
+
+  if (!parsed.code) {
+    throw new OAuthFlowError("No authorization code provided.")
+  }
+
+  assertOAuthState(parsed.state, session.state)
+
+  return {
+    code: parsed.code,
+    verifier: session.verifier,
+  }
+}
+
+async function authorizeInBrowser(
+  session: {
+    state: string
+    verifier: string
+    url: string
+  },
+  timeoutMs: number,
+): Promise<{ code: string; verifier: string }> {
+  stdout.write(`Opening browser for ChatGPT OAuth...\n\n${session.url}\n\n`)
+  const waitForCallback = runLocalCallbackServer(timeoutMs)
+  const opened = await openInBrowser(session.url)
+
+  if (!opened) {
+    stdout.write(
+      "Could not open a browser automatically. Open the URL above manually.\n\n",
+    )
+  }
+
+  const result = await waitForCallback
+
+  if (!result) {
+    throw new OAuthFlowError(
+      "OAuth callback timed out. Re-run with --manual, or try again.",
+    )
+  }
+
+  assertOAuthState(result.state, session.state)
+
+  return {
+    code: result.code,
+    verifier: session.verifier,
+  }
 }
 
 async function login(manual: boolean, timeoutMs: number): Promise<number> {
   const store = new AuthStore()
+  const session = createLoginSession()
+  const authorization = manual
+    ? await authorizeManually(session)
+    : await authorizeInBrowser(session, timeoutMs)
 
-  let code: string
-  let verifier: string
-
-  if (manual) {
-    const pkce = generatePkce()
-    const state = createState()
-    const url = buildAuthorizeUrl({
-      state,
-      codeChallenge: pkce.challenge,
-    })
-
-    stdout.write(
-      `Open this URL in your browser and complete login:\n\n${url}\n\n`,
-    )
-    const pasted = await prompt(
-      "Paste the full redirect URL or authorization code here:\n> ",
-    )
-    const parsed = parseAuthorizationInput(pasted)
-
-    if (!parsed.code) {
-      throw new OAuthFlowError("No authorization code provided.")
-    }
-
-    if (parsed.state && parsed.state !== state) {
-      throw new OAuthFlowError("OAuth state mismatch.")
-    }
-
-    code = parsed.code
-    verifier = pkce.verifier
-  } else {
-    const pkce = generatePkce()
-    const state = createState()
-    const url = buildAuthorizeUrl({
-      state,
-      codeChallenge: pkce.challenge,
-    })
-
-    stdout.write(`Opening browser for ChatGPT OAuth...\n\n${url}\n\n`)
-    const wait = runLocalCallbackServer(timeoutMs)
-    const opened = await openInBrowser(url)
-
-    if (!opened) {
-      stdout.write(
-        "Could not open a browser automatically. Open the URL above manually.\n\n",
-      )
-    }
-
-    const result = await wait
-
-    if (!result) {
-      throw new OAuthFlowError(
-        "OAuth callback timed out. Re-run with --manual, or try again.",
-      )
-    }
-
-    if (result.state && result.state !== state) {
-      throw new OAuthFlowError("OAuth state mismatch.")
-    }
-
-    code = result.code
-    verifier = pkce.verifier
-  }
-
-  const token = await exchangeAuthorizationCode({ code, verifier })
+  const token = await exchangeAuthorizationCode(authorization)
   const payload = decodeJwtPayload(token.access)
 
   if (!payload) {

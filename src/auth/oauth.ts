@@ -28,6 +28,8 @@ export interface PkceCodes {
   challenge: string
 }
 
+type OAuthErrorConstructor = typeof OAuthFlowError | typeof TokenRefreshError
+
 function base64Url(input: Uint8Array): string {
   return Buffer.from(input)
     .toString("base64")
@@ -103,19 +105,47 @@ export function extractChatGPTAccountId(
   return asString(claim.chatgpt_account_id)
 }
 
-async function parseTokenResponse(
+async function parseJsonBody(
   response: Response,
-  errorType: typeof OAuthFlowError | typeof TokenRefreshError,
-): Promise<TokenResponse> {
-  let body: unknown
-
+  errorType: OAuthErrorConstructor,
+): Promise<unknown> {
   try {
-    body = await response.json()
+    return await response.json()
   } catch (error) {
     throw new errorType("Token response was not valid JSON.", {
       cause: error,
     })
   }
+}
+
+async function postTokenRequest(input: {
+  fetchFn?: typeof fetch
+  params: URLSearchParams
+  errorType: OAuthErrorConstructor
+  networkErrorMessage: string
+}): Promise<Response> {
+  const fetchFn = input.fetchFn ?? fetch
+
+  try {
+    return await fetchFn(TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: input.params,
+    })
+  } catch (error) {
+    throw new input.errorType(input.networkErrorMessage, {
+      cause: error,
+    })
+  }
+}
+
+async function parseTokenResponse(
+  response: Response,
+  errorType: OAuthErrorConstructor,
+): Promise<TokenResponse> {
+  const body = await parseJsonBody(response, errorType)
 
   if (!isRecord(body)) {
     throw new errorType("Token response was invalid.")
@@ -142,29 +172,18 @@ export async function exchangeAuthorizationCode(input: {
   fetchFn?: typeof fetch
   redirectUri?: string
 }): Promise<TokenResponse> {
-  const fetchFn = input.fetchFn ?? fetch
-
-  let response: Response
-
-  try {
-    response = await fetchFn(TOKEN_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        client_id: CLIENT_ID,
-        code: input.code,
-        code_verifier: input.verifier,
-        redirect_uri: input.redirectUri ?? REDIRECT_URI,
-      }),
-    })
-  } catch (error) {
-    throw new OAuthFlowError("Authorization code exchange failed.", {
-      cause: error,
-    })
-  }
+  const response = await postTokenRequest({
+    fetchFn: input.fetchFn,
+    params: new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: CLIENT_ID,
+      code: input.code,
+      code_verifier: input.verifier,
+      redirect_uri: input.redirectUri ?? REDIRECT_URI,
+    }),
+    errorType: OAuthFlowError,
+    networkErrorMessage: "Authorization code exchange failed.",
+  })
 
   if (!response.ok) {
     throw new OAuthFlowError(
@@ -179,27 +198,16 @@ export async function refreshAccessToken(input: {
   refreshToken: string
   fetchFn?: typeof fetch
 }): Promise<TokenResponse> {
-  const fetchFn = input.fetchFn ?? fetch
-
-  let response: Response
-
-  try {
-    response = await fetchFn(TOKEN_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        client_id: CLIENT_ID,
-        refresh_token: input.refreshToken,
-      }),
-    })
-  } catch (error) {
-    throw new TokenRefreshError("Token refresh failed.", {
-      cause: error,
-    })
-  }
+  const response = await postTokenRequest({
+    fetchFn: input.fetchFn,
+    params: new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: CLIENT_ID,
+      refresh_token: input.refreshToken,
+    }),
+    errorType: TokenRefreshError,
+    networkErrorMessage: "Token refresh failed.",
+  })
 
   if (!response.ok) {
     throw new TokenRefreshError(
@@ -213,8 +221,20 @@ export async function refreshAccessToken(input: {
 const SUCCESS_HTML =
   "<html><body><h3>Login complete.</h3>You can close this tab.</body></html>"
 
+const HTML_ESCAPE_TABLE: Record<string, string> = {
+  '"': "&quot;",
+  "&": "&amp;",
+  "'": "&#39;",
+  "<": "&lt;",
+  ">": "&gt;",
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/["&'<>]/g, (char) => HTML_ESCAPE_TABLE[char] ?? char)
+}
+
 function errorHtml(message: string): string {
-  return `<html><body><h3>Authorization failed.</h3><pre>${message}</pre></body></html>`
+  return `<html><body><h3>Authorization failed.</h3><pre>${escapeHtml(message)}</pre></body></html>`
 }
 
 function readCallbackParams(req: IncomingMessage): {
@@ -245,7 +265,7 @@ function writeHtml(
 
 export async function runLocalCallbackServer(
   timeoutMs = 180_000,
-): Promise<{ code: string; state?: string } | undefined> {
+): Promise<{ code: string; state: string } | undefined> {
   return new Promise((resolve, reject) => {
     let settled = false
 
@@ -269,7 +289,7 @@ export async function runLocalCallbackServer(
       settle(() => resolve(undefined))
     }, timeoutMs)
 
-    const finish = (value: { code: string; state?: string }): void => {
+    const finish = (value: { code: string; state: string }): void => {
       settle(() => resolve(value))
     }
 
@@ -287,6 +307,12 @@ export async function runLocalCallbackServer(
       }
 
       const params = readCallbackParams(req)
+
+      if (!params.state) {
+        writeHtml(res, 400, errorHtml("Missing OAuth state."))
+        fail("OAuth callback did not include an OAuth state.")
+        return
+      }
 
       if (params.error) {
         const message = params.errorDescription ?? params.error
@@ -359,32 +385,31 @@ export function parseAuthorizationInput(value: string): {
   }
 }
 
-export async function openInBrowser(url: string): Promise<boolean> {
-  const commands: Array<{ file: string; args: string[] }> =
-    process.platform === "darwin"
-      ? [{ file: "open", args: [url] }]
-      : process.platform === "win32"
-        ? [{ file: "cmd", args: ["/c", "start", "", url] }]
-        : [{ file: "xdg-open", args: [url] }]
-
-  for (const command of commands) {
-    const opened = await new Promise<boolean>((resolve) => {
-      const child = spawn(command.file, command.args, {
-        detached: true,
-        stdio: "ignore",
-      })
-
-      child.on("error", () => resolve(false))
-      child.on("spawn", () => {
-        child.unref()
-        resolve(true)
-      })
-    })
-
-    if (opened) {
-      return true
-    }
+function browserCommand(url: string): { file: string; args: string[] } {
+  if (process.platform === "darwin") {
+    return { file: "open", args: [url] }
   }
 
-  return false
+  if (process.platform === "win32") {
+    return { file: "cmd", args: ["/c", "start", "", url] }
+  }
+
+  return { file: "xdg-open", args: [url] }
+}
+
+export async function openInBrowser(url: string): Promise<boolean> {
+  const command = browserCommand(url)
+
+  return new Promise<boolean>((resolve) => {
+    const child = spawn(command.file, command.args, {
+      detached: true,
+      stdio: "ignore",
+    })
+
+    child.on("error", () => resolve(false))
+    child.on("spawn", () => {
+      child.unref()
+      resolve(true)
+    })
+  })
 }

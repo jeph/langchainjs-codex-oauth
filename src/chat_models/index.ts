@@ -35,12 +35,13 @@ import type { ZodType } from "zod"
 
 import { AuthStore } from "../auth/store.js"
 import { CodexClient } from "../client/codex_client.js"
-import type { SystemPromptMode } from "../client/types.js"
+import type { CodexRequestParams, SystemPromptMode } from "../client/types.js"
 import { extractTextDelta, isTerminalEvent } from "../client/sse.js"
 import {
   buildExtraInstructions,
   ensureToolCallIds,
   extractSystemTexts,
+  findEarliestStopIndex,
   toInputItems,
   truncateAtStop,
 } from "../converters/messages.js"
@@ -108,6 +109,28 @@ interface RequestState {
   textVerbosity?: string
   include?: string[]
   extraInstructions?: string
+}
+
+function structuredOutputFunctionName(
+  schema:
+    | Record<string, unknown>
+    | SerializableSchema
+    | InteropZodType
+    | ZodType,
+  configuredName?: string,
+): string {
+  if (configuredName) {
+    return configuredName
+  }
+
+  return !isInteropZodSchema(schema) &&
+    !isSerializableSchema(schema) &&
+    typeof schema === "object" &&
+    schema !== null &&
+    "name" in schema &&
+    typeof schema.name === "string"
+    ? schema.name
+    : "extract"
 }
 
 export class ChatCodexOAuth extends BaseChatModel<
@@ -326,18 +349,7 @@ export class ChatCodexOAuth extends BaseChatModel<
     const schema = outputSchema
     const description =
       getSchemaDescription(schema) ?? "A function available to call."
-    let functionName = config?.name ?? "extract"
-
-    if (
-      !isInteropZodSchema(schema) &&
-      !isSerializableSchema(schema) &&
-      typeof schema === "object" &&
-      schema !== null &&
-      "name" in schema &&
-      typeof schema.name === "string"
-    ) {
-      functionName = schema.name
-    }
+    const functionName = structuredOutputFunctionName(schema, config?.name)
 
     const asJsonSchema =
       isInteropZodSchema(schema) || isSerializableSchema(schema)
@@ -396,14 +408,12 @@ export class ChatCodexOAuth extends BaseChatModel<
     }
   }
 
-  override async _generate(
+  private buildClientRequest(
     messages: BaseMessage[],
-    options: this["ParsedCallOptions"],
-    _runManager?: CallbackManagerForLLMRun,
-  ): Promise<ChatResult> {
-    throwIfAborted(options.signal)
-    const state = this.buildRequestState(messages, options)
-    const result = await this.client.completeWithResponse({
+    state: RequestState,
+    signal?: AbortSignal,
+  ): CodexRequestParams {
+    return {
       inputItems: toInputItems(messages, this.systemPromptMode),
       model: this.model,
       tools: state.tools,
@@ -415,8 +425,46 @@ export class ChatCodexOAuth extends BaseChatModel<
       textVerbosity: state.textVerbosity,
       include: state.include,
       extraInstructions: state.extraInstructions,
-      signal: options.signal,
+      signal,
+    }
+  }
+
+  private async *emitTextChunk(
+    text: string,
+    runManager?: CallbackManagerForLLMRun,
+  ): AsyncGenerator<ChatGenerationChunk> {
+    if (!text) {
+      return
+    }
+
+    const chunk = new ChatGenerationChunk({
+      message: new AIMessageChunk({
+        content: text,
+      }),
+      text,
     })
+
+    yield chunk
+    await runManager?.handleLLMNewToken(
+      text,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { chunk },
+    )
+  }
+
+  override async _generate(
+    messages: BaseMessage[],
+    options: this["ParsedCallOptions"],
+    _runManager?: CallbackManagerForLLMRun,
+  ): Promise<ChatResult> {
+    throwIfAborted(options.signal)
+    const state = this.buildRequestState(messages, options)
+    const result = await this.client.completeWithResponse(
+      this.buildClientRequest(messages, state, options.signal),
+    )
 
     const responseMetadata = extractResponseMetadata(result.response)
     const usageMetadata = extractUsageMetadata(result.response)
@@ -456,6 +504,7 @@ export class ChatCodexOAuth extends BaseChatModel<
   ): AsyncGenerator<ChatGenerationChunk> {
     throwIfAborted(options.signal)
     const state = this.buildRequestState(messages, options)
+    const request = this.buildClientRequest(messages, state, options.signal)
     const stop = (options.stop ?? []).filter(
       (item): item is string => typeof item === "string" && item.length > 0,
     )
@@ -468,39 +517,12 @@ export class ChatCodexOAuth extends BaseChatModel<
     let buffer = ""
     let stopped = false
 
-    for await (const event of this.client.streamEvents({
-      inputItems: toInputItems(messages, this.systemPromptMode),
-      model: this.model,
-      tools: state.tools,
-      toolChoice: state.toolChoice,
-      temperature: state.temperature,
-      maxOutputTokens: state.maxOutputTokens,
-      reasoningEffort: state.reasoningEffort,
-      reasoningSummary: state.reasoningSummary,
-      textVerbosity: state.textVerbosity,
-      include: state.include,
-      extraInstructions: state.extraInstructions,
-      signal: options.signal,
-    })) {
+    for await (const event of this.client.streamEvents(request)) {
       throwIfAborted(options.signal)
 
       if (isTerminalEvent(event)) {
         if (!stopped && buffer.length > 0) {
-          const chunk = new ChatGenerationChunk({
-            message: new AIMessageChunk({
-              content: buffer,
-            }),
-            text: buffer,
-          })
-          yield chunk
-          await runManager?.handleLLMNewToken(
-            buffer,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            { chunk },
-          )
+          yield* this.emitTextChunk(buffer, runManager)
         }
 
         const rawResponse =
@@ -579,36 +601,12 @@ export class ChatCodexOAuth extends BaseChatModel<
       buffer += delta
 
       if (stop.length > 0) {
-        let earliest: number | undefined
-
-        for (const token of stop) {
-          const index = buffer.indexOf(token)
-
-          if (index !== -1 && (earliest === undefined || index < earliest)) {
-            earliest = index
-          }
-        }
+        const earliest = findEarliestStopIndex(buffer, stop)
 
         if (earliest !== undefined) {
           const text = buffer.slice(0, earliest)
 
-          if (text) {
-            const chunk = new ChatGenerationChunk({
-              message: new AIMessageChunk({
-                content: text,
-              }),
-              text,
-            })
-            yield chunk
-            await runManager?.handleLLMNewToken(
-              text,
-              undefined,
-              undefined,
-              undefined,
-              undefined,
-              { chunk },
-            )
-          }
+          yield* this.emitTextChunk(text, runManager)
 
           stopped = true
           buffer = ""
@@ -622,42 +620,12 @@ export class ChatCodexOAuth extends BaseChatModel<
         const text = buffer.slice(0, safeLength)
         buffer = buffer.slice(safeLength)
 
-        if (text) {
-          const chunk = new ChatGenerationChunk({
-            message: new AIMessageChunk({
-              content: text,
-            }),
-            text,
-          })
-          yield chunk
-          await runManager?.handleLLMNewToken(
-            text,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            { chunk },
-          )
-        }
+        yield* this.emitTextChunk(text, runManager)
 
         continue
       }
 
-      const chunk = new ChatGenerationChunk({
-        message: new AIMessageChunk({
-          content: buffer,
-        }),
-        text: buffer,
-      })
-      yield chunk
-      await runManager?.handleLLMNewToken(
-        buffer,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        { chunk },
-      )
+      yield* this.emitTextChunk(buffer, runManager)
       buffer = ""
     }
   }

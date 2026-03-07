@@ -44,6 +44,21 @@ function createModel(
   })
 }
 
+async function assertEventually(
+  assertion: () => Promise<void>,
+  retries = 2,
+): Promise<void> {
+  try {
+    await assertion()
+  } catch (error) {
+    if (retries === 0) {
+      throw error
+    }
+
+    await assertEventually(assertion, retries - 1)
+  }
+}
+
 function createAddTool(log: string[] = []) {
   return tool(
     async ({ a, b }) => {
@@ -299,78 +314,84 @@ async function runManualToolLoop({
 
 describe.skipIf(!hasAuth)("ChatCodexOAuth extended live integration", () => {
   test("streams a long summary from a large dossier", async () => {
-    const anchorA = "ANCHOR_ALPHA_203"
-    const anchorB = "ANCHOR_OMEGA_917"
-    const model = createModel({ maxTokens: 500 })
-    const parts: string[] = []
+    await assertEventually(async () => {
+      const anchorA = "ANCHOR_ALPHA_203"
+      const anchorB = "ANCHOR_OMEGA_917"
+      const model = createModel({ maxTokens: 500 })
+      const parts: string[] = []
 
-    for await (const chunk of await model.stream([
-      new SystemMessage("You are a careful operations summarizer."),
-      new HumanMessage(buildLongSummaryPrompt(anchorA, anchorB)),
-    ])) {
-      if (typeof chunk.content === "string" && chunk.content.length > 0) {
-        parts.push(chunk.content)
+      for await (const chunk of await model.stream([
+        new SystemMessage("You are a careful operations summarizer."),
+        new HumanMessage(buildLongSummaryPrompt(anchorA, anchorB)),
+      ])) {
+        if (typeof chunk.content === "string" && chunk.content.length > 0) {
+          parts.push(chunk.content)
+        }
       }
-    }
 
-    const output = parts.join("")
+      const output = parts.join("")
 
-    expect(output.length).toBeGreaterThan(220)
-    expect(output).toContain(`ANCHORS=${anchorA}|${anchorB}`)
+      expect(output.length).toBeGreaterThan(220)
+      expect(output).toContain(`ANCHORS=${anchorA}|${anchorB}`)
+    })
   })
 
   test("reuses one model across many sequential long invokes", async () => {
-    const model = createModel({ maxTokens: 90 })
-    const markers = ["FOCUS-271A", "FOCUS-982B", "FOCUS-554C", "FOCUS-118D"]
-    const seenMarkers: string[] = []
+    await assertEventually(async () => {
+      const model = createModel({ maxTokens: 90 })
+      const markers = ["FOCUS-271A", "FOCUS-982B", "FOCUS-554C", "FOCUS-118D"]
+      const seenMarkers: string[] = []
 
-    for (const marker of markers) {
-      const result = await model.invoke([
-        new SystemMessage(
-          "Read the full brief and then return only the final focus marker.",
-        ),
-        new HumanMessage(buildLongMarkerPrompt(marker, 18)),
-      ])
-      const output = textOf(result.content)
+      for (const marker of markers) {
+        const result = await model.invoke([
+          new SystemMessage(
+            "Read the full brief and then return only the final focus marker.",
+          ),
+          new HumanMessage(buildLongMarkerPrompt(marker, 18)),
+        ])
+        const output = textOf(result.content)
 
-      expect(output).toContain(marker)
-      for (const previousMarker of seenMarkers) {
-        expect(output).not.toContain(previousMarker)
+        expect(output).toContain(marker)
+        for (const previousMarker of seenMarkers) {
+          expect(output).not.toContain(previousMarker)
+        }
+        expectUsage(result)
+        seenMarkers.push(marker)
       }
-      expectUsage(result)
-      seenMarkers.push(marker)
-    }
+    })
   })
 
   test("handles a larger mixed batch without cross-prompt bleed", async () => {
-    const model = createModel({ maxTokens: 120 })
-    const markers = [
-      "BATCH-301A",
-      "BATCH-301B",
-      "BATCH-301C",
-      "BATCH-301D",
-      "BATCH-301E",
-    ]
-    const results = await model.batch(
-      markers.map((marker, index) => [
-        new HumanMessage(buildLongMarkerPrompt(marker, 14 + index)),
-      ]),
-    )
+    await assertEventually(async () => {
+      const model = createModel({ maxTokens: 120 })
+      const markers = [
+        "BATCH-301A",
+        "BATCH-301B",
+        "BATCH-301C",
+        "BATCH-301D",
+        "BATCH-301E",
+      ]
+      const results = await model.batch(
+        markers.map((marker, index) => [
+          new HumanMessage(buildLongMarkerPrompt(marker, 14 + index)),
+        ]),
+      )
 
-    expect(results).toHaveLength(markers.length)
+      expect(results).toHaveLength(markers.length)
 
-    for (const [index, result] of results.entries()) {
-      const marker = markers[index]!
-      const output = textOf(result.content)
+      for (const [index, result] of results.entries()) {
+        const marker = markers[index]!
+        const output = textOf(result.content)
 
-      expect(output).toContain(marker)
-      for (const otherMarker of markers) {
-        if (otherMarker !== marker) {
-          expect(output).not.toContain(otherMarker)
+        expect(output).toContain(marker)
+        for (const otherMarker of markers) {
+          if (otherMarker !== marker) {
+            expect(output).not.toContain(otherMarker)
+          }
         }
+        expectUsage(result)
       }
-      expectUsage(result)
-    }
+    })
   })
 
   test("supports a multi-step manual tool loop across repeated invocations", async () => {
@@ -401,58 +422,61 @@ describe.skipIf(!hasAuth)("ChatCodexOAuth extended live integration", () => {
   })
 
   test("parses a large nested structured output payload", async () => {
-    const { document, selectedEmails, selectedIds } = buildLargeAuditDocument()
-    const AuditSchema = z.object({
-      summary: z.string(),
-      totalSelected: z.number().int(),
-      selectedRecords: z.array(
-        z.object({
-          recordId: z.string(),
-          owner: z.string(),
-          email: z.string().email(),
-          evidence: z.object({
-            marker: z.string(),
-            action: z.string(),
+    await assertEventually(async () => {
+      const { document, selectedEmails, selectedIds } =
+        buildLargeAuditDocument()
+      const AuditSchema = z.object({
+        summary: z.string(),
+        totalSelected: z.number().int(),
+        selectedRecords: z.array(
+          z.object({
+            recordId: z.string(),
+            owner: z.string(),
+            email: z.string().email(),
+            evidence: z.object({
+              marker: z.string(),
+              action: z.string(),
+            }),
           }),
-        }),
-      ),
-    })
-    const model = createModel({ maxTokens: 700 }).withStructuredOutput(
-      AuditSchema,
-      { includeRaw: true },
-    )
-    const result = await model.invoke([
-      new SystemMessage(
-        "Extract only the records marked ACTION=FOLLOW_UP and preserve their explicit marker/action strings.",
-      ),
-      new HumanMessage(document),
-    ])
-    const parsedIds = result.parsed.selectedRecords
-      .map((record) => record.recordId)
-      .sort()
-    const parsedEmails = result.parsed.selectedRecords
-      .map((record) => record.email)
-      .sort()
+        ),
+      })
+      const model = createModel({ maxTokens: 700 }).withStructuredOutput(
+        AuditSchema,
+        { includeRaw: true },
+      )
+      const result = await model.invoke([
+        new SystemMessage(
+          "Extract only the records marked ACTION=FOLLOW_UP and preserve their explicit marker/action strings.",
+        ),
+        new HumanMessage(document),
+      ])
+      const parsedIds = result.parsed.selectedRecords
+        .map((record) => record.recordId)
+        .sort()
+      const parsedEmails = result.parsed.selectedRecords
+        .map((record) => record.email)
+        .sort()
 
-    expect(AIMessage.isInstance(result.raw)).toBe(true)
-    expect(
-      AIMessage.isInstance(result.raw)
-        ? result.raw.tool_calls?.[0]?.name
-        : null,
-    ).toBe("extract")
-    expect(result.parsed.totalSelected).toBe(selectedIds.length)
-    expect(parsedIds).toEqual([...selectedIds].sort())
-    expect(parsedEmails).toEqual([...selectedEmails].sort())
-    expect(
-      result.parsed.selectedRecords.every(
-        (record) => record.evidence.action === "FOLLOW_UP",
-      ),
-    ).toBe(true)
-    expect(
-      result.parsed.selectedRecords.every((record) =>
-        record.evidence.marker.startsWith("FOLLOW-UP-"),
-      ),
-    ).toBe(true)
+      expect(AIMessage.isInstance(result.raw)).toBe(true)
+      expect(
+        AIMessage.isInstance(result.raw)
+          ? result.raw.tool_calls?.[0]?.name
+          : null,
+      ).toBe("extract")
+      expect(result.parsed.totalSelected).toBe(selectedIds.length)
+      expect(parsedIds).toEqual([...selectedIds].sort())
+      expect(parsedEmails).toEqual([...selectedEmails].sort())
+      expect(
+        result.parsed.selectedRecords.every(
+          (record) => record.evidence.action === "FOLLOW_UP",
+        ),
+      ).toBe(true)
+      expect(
+        result.parsed.selectedRecords.every((record) =>
+          record.evidence.marker.startsWith("FOLLOW-UP-"),
+        ),
+      ).toBe(true)
+    })
   })
 
   test("runs a two-tool LangChain agent across multiple steps", async () => {
