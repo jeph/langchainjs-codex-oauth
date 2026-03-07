@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { getEnvironmentVariable } from "@langchain/core/utils/env"
 
 import { defaultHomeDir } from "../auth/store.js"
+import { getEnvironmentVariable } from "../utils/env.js"
 import type { InstructionsMode } from "./types.js"
 import { asString, isRecord } from "../utils/json.js"
 import { normalizeModel } from "../converters/messages.js"

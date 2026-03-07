@@ -11,9 +11,9 @@ import {
 import { randomUUID } from "node:crypto"
 import { homedir } from "node:os"
 import path from "node:path"
-import { getEnvironmentVariable } from "@langchain/core/utils/env"
 
 import { CodexOAuthError, NotAuthenticatedError } from "../errors.js"
+import { getEnvironmentVariable } from "../utils/env.js"
 import { asInteger, asString, isRecord } from "../utils/json.js"
 
 export interface OAuthCredentials {

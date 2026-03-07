@@ -3,6 +3,22 @@
   "version": "0.1.0",
   "description": "Use ChatGPT Codex via OAuth as a LangChainJS chat model",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeph/langchainjs-codex-oauth.git"
+  },
+  "homepage": "https://github.com/jeph/langchainjs-codex-oauth#readme",
+  "bugs": {
+    "url": "https://github.com/jeph/langchainjs-codex-oauth/issues"
+  },
+  "keywords": [
+    "langchain",
+    "langchainjs",
+    "langgraph",
+    "codex",
+    "oauth",
+    "chatgpt"
+  ],
   "type": "module",
   "engines": {
     "node": ">=20.0.0"
@@ -15,6 +31,7 @@
     "build:dist": "tsup",
     "build:release": "pnpm run clean && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run test:int && pnpm run test:int:extended && pnpm run build:dist",
     "clean": "node -e \"import('node:fs').then(fs => fs.rmSync('dist', { force: true, recursive: true }))\"",
+    "prepublishOnly": "pnpm run build:release",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -33,6 +50,9 @@
     "example:agent": "tsx examples/langgraph/agent.ts",
     "smoke:live": "tsx examples/langchain/hello.ts"
   },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
   "peerDependencies": {
     "@langchain/core": "^1.1.31"
   },
@@ -49,8 +69,7 @@
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^7.18.0",
-    "vitest": "^4.0.18",
-    "zod": "^4.3.6"
+    "vitest": "^4.0.18"
   },
   "exports": {
     ".": {

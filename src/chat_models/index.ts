@@ -20,7 +20,6 @@ import {
 } from "@langchain/core/messages"
 import { ChatGenerationChunk, type ChatResult } from "@langchain/core/outputs"
 import { Runnable } from "@langchain/core/runnables"
-import { getEnvironmentVariable } from "@langchain/core/utils/env"
 import { toJsonSchema } from "@langchain/core/utils/json_schema"
 import {
   isSerializableSchema,
@@ -54,6 +53,7 @@ import {
 } from "../converters/responses.js"
 import { convertTools, normalizeToolChoice } from "../converters/tools.js"
 import { VERSION } from "../version.js"
+import { getEnvironmentVariable } from "../utils/env.js"
 import type {
   ChatCodexOAuthCallOptions,
   ChatCodexOAuthParams,
