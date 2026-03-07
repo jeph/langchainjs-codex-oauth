@@ -1,5 +1,5 @@
-import { configDefaults, defineConfig } from "vitest/config";
-import pkg from "./package.json" with { type: "json" };
+import { configDefaults, defineConfig } from "vitest/config"
+import pkg from "./package.json" with { type: "json" }
 
 export default defineConfig((env) => ({
   define: {
@@ -19,4 +19,4 @@ export default defineConfig((env) => ({
       enabled: true,
     },
   },
-}));
+}))

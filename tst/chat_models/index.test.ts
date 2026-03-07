@@ -2,15 +2,15 @@ import {
   AIMessage,
   HumanMessage,
   SystemMessage,
-} from "@langchain/core/messages";
-import { describe, expect, test, vi } from "vitest";
-import { z } from "zod";
+} from "@langchain/core/messages"
+import { describe, expect, test, vi } from "vitest"
+import { z } from "zod"
 
-import { ChatCodexOAuth } from "../../src/chat_models/index.js";
+import { ChatCodexOAuth } from "../../src/chat_models/index.js"
 
 describe("ChatCodexOAuth", () => {
   test("truncates stop sequences on invoke", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" });
+    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
     vi.spyOn(model.client, "completeWithResponse").mockResolvedValue({
       parsed: {
         content: "hello STOP world",
@@ -18,25 +18,25 @@ describe("ChatCodexOAuth", () => {
         invalidToolCalls: [],
       },
       response: { output: [] },
-    });
+    })
 
     const result = await model.invoke([new HumanMessage("hi")], {
       stop: ["STOP"],
-    });
+    })
 
-    expect(result.content).toBe("hello ");
-  });
+    expect(result.content).toBe("hello ")
+  })
 
   test("passes strict system prompts as extra instructions", async () => {
     const model = new ChatCodexOAuth({
       model: "gpt-5.2-codex",
       systemPromptMode: "strict",
-    });
-    let captured: Record<string, unknown> | undefined;
+    })
+    let captured: Record<string, unknown> | undefined
 
     vi.spyOn(model.client, "completeWithResponse").mockImplementation(
       async (input) => {
-        captured = input as unknown as Record<string, unknown>;
+        captured = input as unknown as Record<string, unknown>
         return {
           parsed: {
             content: "ok",
@@ -44,23 +44,23 @@ describe("ChatCodexOAuth", () => {
             invalidToolCalls: [],
           },
           response: { output: [], status: "completed" },
-        };
+        }
       },
-    );
+    )
 
     await model.invoke([
       new SystemMessage("You are a router."),
       new HumanMessage("hi"),
-    ]);
+    ])
 
     expect(captured?.extraInstructions).toEqual(
       expect.stringContaining("router"),
-    );
+    )
     const inputItems = captured?.inputItems as
       | Array<Record<string, unknown>>
-      | undefined;
-    expect(inputItems?.[0]?.role).toBe("developer");
-  });
+      | undefined
+    expect(inputItems?.[0]?.role).toBe("developer")
+  })
 
   test("passes per-call request overrides on invoke", async () => {
     const model = new ChatCodexOAuth({
@@ -68,12 +68,12 @@ describe("ChatCodexOAuth", () => {
       reasoningEffort: "medium",
       textVerbosity: "medium",
       include: ["reasoning.encrypted_content"],
-    });
-    let captured: Record<string, unknown> | undefined;
+    })
+    let captured: Record<string, unknown> | undefined
 
     vi.spyOn(model.client, "completeWithResponse").mockImplementation(
       async (input) => {
-        captured = input as unknown as Record<string, unknown>;
+        captured = input as unknown as Record<string, unknown>
         return {
           parsed: {
             content: "ok",
@@ -81,31 +81,31 @@ describe("ChatCodexOAuth", () => {
             invalidToolCalls: [],
           },
           response: { output: [], status: "completed" },
-        };
+        }
       },
-    );
+    )
 
     await model.invoke([new HumanMessage("hi")], {
       reasoningEffort: "low",
       reasoningSummary: "brief",
       textVerbosity: "high",
       include: ["custom.include"],
-    });
+    })
 
     expect(captured).toMatchObject({
       reasoningEffort: "low",
       reasoningSummary: "brief",
       textVerbosity: "high",
       include: ["custom.include"],
-    });
-  });
+    })
+  })
 
   test("parses direct withStructuredOutput without includeRaw", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" });
+    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
     const ContactInfo = z.object({
       name: z.string(),
       email: z.string(),
-    });
+    })
 
     vi.spyOn(model.client, "completeWithResponse").mockResolvedValue({
       parsed: {
@@ -123,24 +123,24 @@ describe("ChatCodexOAuth", () => {
         invalidToolCalls: [],
       },
       response: { output: [], status: "completed" },
-    });
+    })
 
     const result = await model
       .withStructuredOutput(ContactInfo)
-      .invoke([new HumanMessage("Extract the contact info.")]);
+      .invoke([new HumanMessage("Extract the contact info.")])
 
     expect(result).toEqual({
       name: "Jane Roe",
       email: "jane@example.com",
-    });
-  });
+    })
+  })
 
   test("parses direct withStructuredOutput with includeRaw", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" });
+    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
     const ContactInfo = z.object({
       name: z.string(),
       email: z.string(),
-    });
+    })
 
     vi.spyOn(model.client, "completeWithResponse").mockResolvedValue({
       parsed: {
@@ -158,26 +158,26 @@ describe("ChatCodexOAuth", () => {
         invalidToolCalls: [],
       },
       response: { output: [], status: "completed" },
-    });
+    })
 
     const result = await model
       .withStructuredOutput(ContactInfo, { includeRaw: true })
-      .invoke([new HumanMessage("Extract the contact info.")]);
+      .invoke([new HumanMessage("Extract the contact info.")])
 
-    expect(AIMessage.isInstance(result.raw)).toBe(true);
+    expect(AIMessage.isInstance(result.raw)).toBe(true)
     expect(
       AIMessage.isInstance(result.raw)
         ? result.raw.tool_calls?.[0]?.name
         : null,
-    ).toBe("extract");
+    ).toBe("extract")
     expect(result.parsed).toEqual({
       name: "Jane Roe",
       email: "jane@example.com",
-    });
-  });
+    })
+  })
 
   test("emits tool call chunks while streaming", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" });
+    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
 
     vi.spyOn(model.client, "streamEvents").mockImplementation(
       async function* () {
@@ -189,19 +189,19 @@ describe("ChatCodexOAuth", () => {
             call_id: "call_123",
             name: "Answer",
           },
-        };
+        }
         yield {
           type: "response.function_call_arguments.delta",
           output_index: 0,
           call_id: "call_123",
           delta: '{"answer": ',
-        };
+        }
         yield {
           type: "response.function_call_arguments.delta",
           output_index: 0,
           call_id: "call_123",
           delta: '"hi"}',
-        };
+        }
         yield {
           type: "response.done",
           response: {
@@ -215,53 +215,53 @@ describe("ChatCodexOAuth", () => {
             ],
             status: "completed",
           },
-        };
+        }
       },
-    );
+    )
 
-    const chunks = [];
+    const chunks = []
 
     for await (const chunk of await model.stream([new HumanMessage("hi")])) {
-      chunks.push(chunk);
+      chunks.push(chunk)
     }
 
     const deltaChunks = chunks.filter(
       (chunk) =>
         Array.isArray(chunk.tool_call_chunks) &&
         chunk.tool_call_chunks.length > 0,
-    );
-    expect(deltaChunks).toHaveLength(2);
-    expect(deltaChunks[0]?.tool_call_chunks?.[0]?.id).toBe("call_123");
-    expect(chunks.at(-1)?.tool_calls?.[0]?.id).toBe("call_123");
-  });
+    )
+    expect(deltaChunks).toHaveLength(2)
+    expect(deltaChunks[0]?.tool_call_chunks?.[0]?.id).toBe("call_123")
+    expect(chunks.at(-1)?.tool_calls?.[0]?.id).toBe("call_123")
+  })
 
   test("truncates stop sequences while streaming", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" });
+    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
 
     vi.spyOn(model.client, "streamEvents").mockImplementation(
       async function* () {
-        yield { type: "response.output_text.delta", delta: "hello " };
-        yield { type: "response.output_text.delta", delta: "ST" };
-        yield { type: "response.output_text.delta", delta: "OP world" };
+        yield { type: "response.output_text.delta", delta: "hello " }
+        yield { type: "response.output_text.delta", delta: "ST" }
+        yield { type: "response.output_text.delta", delta: "OP world" }
         yield {
           type: "response.done",
           response: { output: [], status: "completed" },
-        };
+        }
       },
-    );
+    )
 
-    const parts: string[] = [];
+    const parts: string[] = []
 
     for await (const chunk of await model.stream([new HumanMessage("hi")], {
       stop: ["STOP"],
     })) {
       if (typeof chunk.content === "string" && chunk.content.length > 0) {
-        parts.push(chunk.content);
+        parts.push(chunk.content)
       }
     }
 
-    expect(parts.join("")).toBe("hello ");
-  });
+    expect(parts.join("")).toBe("hello ")
+  })
 
   test("passes per-call request overrides while streaming", async () => {
     const model = new ChatCodexOAuth({
@@ -269,18 +269,18 @@ describe("ChatCodexOAuth", () => {
       reasoningEffort: "medium",
       textVerbosity: "medium",
       include: ["reasoning.encrypted_content"],
-    });
-    let captured: Record<string, unknown> | undefined;
+    })
+    let captured: Record<string, unknown> | undefined
 
     vi.spyOn(model.client, "streamEvents").mockImplementation(
       async function* (input) {
-        captured = input as unknown as Record<string, unknown>;
+        captured = input as unknown as Record<string, unknown>
         yield {
           type: "response.done",
           response: { output: [], status: "completed" },
-        };
+        }
       },
-    );
+    )
 
     for await (const _chunk of await model.stream([new HumanMessage("hi")], {
       reasoningEffort: "low",
@@ -296,6 +296,6 @@ describe("ChatCodexOAuth", () => {
       reasoningSummary: "brief",
       textVerbosity: "high",
       include: ["custom.include"],
-    });
-  });
-});
+    })
+  })
+})

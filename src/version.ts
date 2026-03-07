@@ -1,4 +1,4 @@
-declare const __PKG_VERSION__: string | undefined;
+declare const __PKG_VERSION__: string | undefined
 
 export const VERSION =
-  typeof __PKG_VERSION__ === "string" ? __PKG_VERSION__ : "0.0.0-dev";
+  typeof __PKG_VERSION__ === "string" ? __PKG_VERSION__ : "0.0.0-dev"

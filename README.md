@@ -35,19 +35,19 @@ pnpm auth:logout
 ## Quickstart
 
 ```ts
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { ChatCodexOAuth } from "langchainjs-codex-oauth";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages"
+import { ChatCodexOAuth } from "langchainjs-codex-oauth"
 
 const model = new ChatCodexOAuth({
   model: "gpt-5.2-codex",
-});
+})
 
 const result = await model.invoke([
   new SystemMessage("You are a concise coding assistant."),
   new HumanMessage("Say hello and give one TypeScript tip."),
-]);
+])
 
-console.log(result.text);
+console.log(result.text)
 ```
 
 ## Examples

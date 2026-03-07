@@ -1,16 +1,16 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { getEnvironmentVariable } from "@langchain/core/utils/env";
+import { mkdir, readFile, writeFile } from "node:fs/promises"
+import path from "node:path"
+import { getEnvironmentVariable } from "@langchain/core/utils/env"
 
-import { defaultHomeDir } from "../auth/store.js";
-import type { InstructionsMode } from "./types.js";
-import { asString, isRecord } from "../utils/json.js";
-import { normalizeModel } from "../converters/messages.js";
+import { defaultHomeDir } from "../auth/store.js"
+import type { InstructionsMode } from "./types.js"
+import { asString, isRecord } from "../utils/json.js"
+import { normalizeModel } from "../converters/messages.js"
 
 const GITHUB_API_RELEASES =
-  "https://api.github.com/repos/openai/codex/releases/latest";
-const GITHUB_HTML_RELEASES = "https://github.com/openai/codex/releases/latest";
-const INSTRUCTIONS_MODE_ENV = "LANGCHAINJS_CODEX_OAUTH_INSTRUCTIONS_MODE";
+  "https://api.github.com/repos/openai/codex/releases/latest"
+const GITHUB_HTML_RELEASES = "https://github.com/openai/codex/releases/latest"
+const INSTRUCTIONS_MODE_ENV = "LANGCHAINJS_CODEX_OAUTH_INSTRUCTIONS_MODE"
 
 const BUNDLED_CODEX_INSTRUCTIONS = `You are Codex, based on GPT-5. You are running as a coding agent in the Codex CLI on a user's computer.
 
@@ -60,12 +60,12 @@ You are producing plain text that will later be styled by the CLI. Follow these 
   * If there are natural next steps the user may want to take, suggest them at the end of your response. Do not make suggestions if there are no natural next steps.
   * When suggesting multiple options, use numeric lists for the suggestions so the user can quickly respond with a single number.
 - The user does not command execution outputs. When asked to show the output of a command (e.g. \`git show\`), relay the important details in your answer or summarize the key lines so the user understands the result.
-`;
+`
 
 interface PromptFamily {
-  family: string;
-  promptFile: string;
-  cacheFile: string;
+  family: string
+  promptFile: string
+  cacheFile: string
 }
 
 const FAMILIES: PromptFamily[] = [
@@ -94,16 +94,16 @@ const FAMILIES: PromptFamily[] = [
     promptFile: "gpt_5_1_prompt.md",
     cacheFile: "gpt-5.1-instructions.md",
   },
-];
+]
 
 function cacheDir(): string {
-  return path.join(defaultHomeDir(), "cache");
+  return path.join(defaultHomeDir(), "cache")
 }
 
 function instructionsMode(): InstructionsMode {
   const raw = getEnvironmentVariable(INSTRUCTIONS_MODE_ENV)
     ?.trim()
-    .toLowerCase();
+    .toLowerCase()
 
   if (
     raw === "auto" ||
@@ -111,48 +111,48 @@ function instructionsMode(): InstructionsMode {
     raw === "github" ||
     raw === "bundled"
   ) {
-    return raw;
+    return raw
   }
 
-  return "auto";
+  return "auto"
 }
 
 function promptFamily(model: string): PromptFamily {
-  const id = normalizeModel(model).toLowerCase();
+  const id = normalizeModel(model).toLowerCase()
 
   if (id.includes("gpt-5.2-codex") || id.includes("gpt 5.2 codex")) {
-    return FAMILIES[0]!;
+    return FAMILIES[0]!
   }
 
   if (id.includes("codex-max")) {
-    return FAMILIES[1]!;
+    return FAMILIES[1]!
   }
 
   if (id.includes("codex") || id.startsWith("codex-")) {
-    return FAMILIES[2]!;
+    return FAMILIES[2]!
   }
 
   if (id.includes("gpt-5.2")) {
-    return FAMILIES[3]!;
+    return FAMILIES[3]!
   }
 
-  return FAMILIES[4]!;
+  return FAMILIES[4]!
 }
 
 async function latestReleaseTag(fetchFn: typeof fetch): Promise<string> {
   try {
     const api = await fetchFn(GITHUB_API_RELEASES, {
       signal: AbortSignal.timeout(15_000),
-    });
+    })
 
     if (api.ok) {
-      const body: unknown = await api.json();
+      const body: unknown = await api.json()
 
       if (isRecord(body)) {
-        const tag = asString(body.tag_name);
+        const tag = asString(body.tag_name)
 
         if (tag) {
-          return tag;
+          return tag
         }
       }
     }
@@ -163,42 +163,42 @@ async function latestReleaseTag(fetchFn: typeof fetch): Promise<string> {
   const html = await fetchFn(GITHUB_HTML_RELEASES, {
     redirect: "follow",
     signal: AbortSignal.timeout(15_000),
-  });
+  })
 
   if (!html.ok) {
     throw new Error(
       `Failed to determine latest Codex release tag (HTTP ${html.status}).`,
-    );
+    )
   }
 
   if (html.url.includes("/tag/")) {
-    const tag = html.url.split("/tag/").at(-1);
+    const tag = html.url.split("/tag/").at(-1)
 
     if (tag && !tag.includes("/")) {
-      return tag;
+      return tag
     }
   }
 
-  const text = await html.text();
-  const match = text.match(/\/openai\/codex\/releases\/tag\/([^"/]+)/u);
+  const text = await html.text()
+  const match = text.match(/\/openai\/codex\/releases\/tag\/([^"/]+)/u)
 
   if (match?.[1]) {
-    return match[1];
+    return match[1]
   }
 
-  throw new Error("Failed to determine latest Codex release tag.");
+  throw new Error("Failed to determine latest Codex release tag.")
 }
 
 async function writeCache(input: {
-  cachePath: string;
-  metaPath: string;
-  tag: string;
-  url: string;
-  etag: string | undefined;
-  text: string;
+  cachePath: string
+  metaPath: string
+  tag: string
+  url: string
+  etag: string | undefined
+  text: string
 }): Promise<void> {
-  await mkdir(path.dirname(input.cachePath), { recursive: true });
-  await writeFile(input.cachePath, input.text, "utf8");
+  await mkdir(path.dirname(input.cachePath), { recursive: true })
+  await writeFile(input.cachePath, input.text, "utf8")
   await writeFile(
     input.metaPath,
     `${JSON.stringify(
@@ -212,52 +212,50 @@ async function writeCache(input: {
       2,
     )}\n`,
     "utf8",
-  );
+  )
 }
 
 export async function getCodexInstructions(
   model: string,
   fetchFn: typeof fetch = fetch,
 ): Promise<string> {
-  const mode = instructionsMode();
-  const family = promptFamily(model);
-  const dir = cacheDir();
-  const cachePath = path.join(dir, family.cacheFile);
+  const mode = instructionsMode()
+  const family = promptFamily(model)
+  const dir = cacheDir()
+  const cachePath = path.join(dir, family.cacheFile)
   const metaPath = path.join(
     dir,
     family.cacheFile.replace(/\.md$/u, "-meta.json"),
-  );
+  )
 
   if (mode === "auto" || mode === "cache") {
     try {
-      return await readFile(cachePath, "utf8");
+      return await readFile(cachePath, "utf8")
     } catch {
       if (mode === "cache") {
         throw new Error(
           `Instructions cache is missing (${cachePath}). Set ${INSTRUCTIONS_MODE_ENV}=github or bundled.`,
-        );
+        )
       }
     }
   }
 
   if (mode === "bundled") {
-    return BUNDLED_CODEX_INSTRUCTIONS;
+    return BUNDLED_CODEX_INSTRUCTIONS
   }
 
   try {
-    const tag = await latestReleaseTag(fetchFn);
-    const url = `https://raw.githubusercontent.com/openai/codex/${tag}/codex-rs/core/${family.promptFile}`;
+    const tag = await latestReleaseTag(fetchFn)
+    const url = `https://raw.githubusercontent.com/openai/codex/${tag}/codex-rs/core/${family.promptFile}`
     const response = await fetchFn(url, {
       signal: AbortSignal.timeout(30_000),
-    });
+    })
 
     if (!response.ok) {
-      throw new Error(
-        `Failed to fetch instructions (HTTP ${response.status}).`,
-      );
+      throw new Error(`Failed to fetch instructions (HTTP ${response.status}).`)
     }
 
-    const text = await response.text();
+    const text = await response.text()
     await writeCache({
       cachePath,
       metaPath,
@@ -265,15 +263,15 @@ export async function getCodexInstructions(
       url,
       etag: response.headers.get("etag") ?? undefined,
       text,
-    });
-    return text;
+    })
+    return text
   } catch {
     if (mode === "github") {
-      throw new Error("Failed to fetch Codex instructions from GitHub.");
+      throw new Error("Failed to fetch Codex instructions from GitHub.")
     }
 
-    return BUNDLED_CODEX_INSTRUCTIONS;
+    return BUNDLED_CODEX_INSTRUCTIONS
   }
 }
 
-export { BUNDLED_CODEX_INSTRUCTIONS, INSTRUCTIONS_MODE_ENV };
+export { BUNDLED_CODEX_INSTRUCTIONS, INSTRUCTIONS_MODE_ENV }

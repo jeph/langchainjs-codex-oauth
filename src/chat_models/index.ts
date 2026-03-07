@@ -1,113 +1,113 @@
-import type { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
+import type { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager"
 import {
   BaseChatModel,
   type BindToolsInput,
   type LangSmithParams,
-} from "@langchain/core/language_models/chat_models";
+} from "@langchain/core/language_models/chat_models"
 import {
   assembleStructuredOutputPipeline,
   createFunctionCallingParser,
-} from "@langchain/core/language_models/structured_output";
+} from "@langchain/core/language_models/structured_output"
 import type {
   BaseLanguageModelInput,
   StructuredOutputMethodOptions,
-} from "@langchain/core/language_models/base";
+} from "@langchain/core/language_models/base"
 import {
   AIMessage,
   AIMessageChunk,
   type BaseMessage,
   type ToolCallChunk,
-} from "@langchain/core/messages";
-import { ChatGenerationChunk, type ChatResult } from "@langchain/core/outputs";
-import { Runnable } from "@langchain/core/runnables";
-import { getEnvironmentVariable } from "@langchain/core/utils/env";
-import { toJsonSchema } from "@langchain/core/utils/json_schema";
+} from "@langchain/core/messages"
+import { ChatGenerationChunk, type ChatResult } from "@langchain/core/outputs"
+import { Runnable } from "@langchain/core/runnables"
+import { getEnvironmentVariable } from "@langchain/core/utils/env"
+import { toJsonSchema } from "@langchain/core/utils/json_schema"
 import {
   isSerializableSchema,
   type SerializableSchema,
-} from "@langchain/core/utils/standard_schema";
+} from "@langchain/core/utils/standard_schema"
 import {
   getSchemaDescription,
   isInteropZodSchema,
   type InteropZodType,
-} from "@langchain/core/utils/types";
-import type { ZodType } from "zod";
+} from "@langchain/core/utils/types"
+import type { ZodType } from "zod"
 
-import { AuthStore } from "../auth/store.js";
-import { CodexClient } from "../client/codex_client.js";
-import type { SystemPromptMode } from "../client/types.js";
-import { extractTextDelta, isTerminalEvent } from "../client/sse.js";
+import { AuthStore } from "../auth/store.js"
+import { CodexClient } from "../client/codex_client.js"
+import type { SystemPromptMode } from "../client/types.js"
+import { extractTextDelta, isTerminalEvent } from "../client/sse.js"
 import {
   buildExtraInstructions,
   ensureToolCallIds,
   extractSystemTexts,
   toInputItems,
   truncateAtStop,
-} from "../converters/messages.js";
+} from "../converters/messages.js"
 import {
   extractResponseMetadata,
   extractToolCallArgsDelta,
   extractToolCallItemAdded,
   extractUsageMetadata,
   parseAssistantMessage,
-} from "../converters/responses.js";
-import { convertTools, normalizeToolChoice } from "../converters/tools.js";
-import { VERSION } from "../version.js";
+} from "../converters/responses.js"
+import { convertTools, normalizeToolChoice } from "../converters/tools.js"
+import { VERSION } from "../version.js"
 import type {
   ChatCodexOAuthCallOptions,
   ChatCodexOAuthParams,
-} from "./types.js";
+} from "./types.js"
 
-const BASE_URL_ENV = "LANGCHAINJS_CODEX_OAUTH_BASE_URL";
-const TEMPERATURE_ENV = "LANGCHAINJS_CODEX_OAUTH_TEMPERATURE";
-const MAX_TOKENS_ENV = "LANGCHAINJS_CODEX_OAUTH_MAX_TOKENS";
-const TIMEOUT_ENV = "LANGCHAINJS_CODEX_OAUTH_TIMEOUT_S";
-const MAX_RETRIES_ENV = "LANGCHAINJS_CODEX_OAUTH_MAX_RETRIES";
+const BASE_URL_ENV = "LANGCHAINJS_CODEX_OAUTH_BASE_URL"
+const TEMPERATURE_ENV = "LANGCHAINJS_CODEX_OAUTH_TEMPERATURE"
+const MAX_TOKENS_ENV = "LANGCHAINJS_CODEX_OAUTH_MAX_TOKENS"
+const TIMEOUT_ENV = "LANGCHAINJS_CODEX_OAUTH_TIMEOUT_S"
+const MAX_RETRIES_ENV = "LANGCHAINJS_CODEX_OAUTH_MAX_RETRIES"
 
 function parseIntegerEnv(name: string): number | undefined {
-  const raw = getEnvironmentVariable(name);
+  const raw = getEnvironmentVariable(name)
 
   if (!raw) {
-    return undefined;
+    return undefined
   }
 
-  const value = Number.parseInt(raw, 10);
-  return Number.isInteger(value) ? value : undefined;
+  const value = Number.parseInt(raw, 10)
+  return Number.isInteger(value) ? value : undefined
 }
 
 function parseFloatEnv(name: string): number | undefined {
-  const raw = getEnvironmentVariable(name);
+  const raw = getEnvironmentVariable(name)
 
   if (!raw) {
-    return undefined;
+    return undefined
   }
 
-  const value = Number.parseFloat(raw);
-  return Number.isFinite(value) ? value : undefined;
+  const value = Number.parseFloat(raw)
+  return Number.isFinite(value) ? value : undefined
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (!signal?.aborted) {
-    return;
+    return
   }
 
   if (signal.reason instanceof Error) {
-    throw signal.reason;
+    throw signal.reason
   }
 
-  throw new Error("Request aborted.");
+  throw new Error("Request aborted.")
 }
 
 interface RequestState {
-  tools?: Array<Record<string, unknown>>;
-  toolChoice?: string | Record<string, unknown>;
-  temperature?: number;
-  maxOutputTokens?: number;
-  reasoningEffort?: string;
-  reasoningSummary?: string;
-  textVerbosity?: string;
-  include?: string[];
-  extraInstructions?: string;
+  tools?: Array<Record<string, unknown>>
+  toolChoice?: string | Record<string, unknown>
+  temperature?: number
+  maxOutputTokens?: number
+  reasoningEffort?: string
+  reasoningSummary?: string
+  textVerbosity?: string
+  include?: string[]
+  extraInstructions?: string
 }
 
 export class ChatCodexOAuth extends BaseChatModel<
@@ -115,70 +115,69 @@ export class ChatCodexOAuth extends BaseChatModel<
   AIMessageChunk
 > {
   static override lc_name(): string {
-    return "ChatCodexOAuth";
+    return "ChatCodexOAuth"
   }
 
-  override lc_serializable = true;
+  override lc_serializable = true
 
-  override lc_namespace = ["langchain", "chat_models", "codex_oauth"];
+  override lc_namespace = ["langchain", "chat_models", "codex_oauth"]
 
-  model: string;
+  model: string
 
-  temperature?: number;
+  temperature?: number
 
-  maxTokens?: number;
+  maxTokens?: number
 
-  reasoningEffort?: string;
+  reasoningEffort?: string
 
-  reasoningSummary?: string;
+  reasoningSummary?: string
 
-  textVerbosity?: string;
+  textVerbosity?: string
 
-  include?: string[];
+  include?: string[]
 
-  timeout: number;
+  timeout: number
 
-  maxRetries: number;
+  maxRetries: number
 
-  baseURL: string;
+  baseURL: string
 
-  authPath?: string;
+  authPath?: string
 
-  systemPromptMode: SystemPromptMode;
+  systemPromptMode: SystemPromptMode
 
-  readonly client: CodexClient;
+  readonly client: CodexClient
 
   constructor(fields: ChatCodexOAuthParams = {}) {
-    super(fields);
-    this._addVersion("langchainjs-codex-oauth", VERSION);
-    this.model = fields.model ?? "gpt-5.2-codex";
-    this.temperature = fields.temperature ?? parseFloatEnv(TEMPERATURE_ENV);
-    this.maxTokens = fields.maxTokens ?? parseIntegerEnv(MAX_TOKENS_ENV);
-    this.reasoningEffort = fields.reasoningEffort ?? "medium";
-    this.reasoningSummary = fields.reasoningSummary;
-    this.textVerbosity = fields.textVerbosity ?? "medium";
-    this.include = fields.include ?? ["reasoning.encrypted_content"];
-    this.timeout = fields.timeout ?? (parseFloatEnv(TIMEOUT_ENV) ?? 60) * 1000;
-    this.maxRetries =
-      fields.maxRetries ?? parseIntegerEnv(MAX_RETRIES_ENV) ?? 2;
+    super(fields)
+    this._addVersion("langchainjs-codex-oauth", VERSION)
+    this.model = fields.model ?? "gpt-5.2-codex"
+    this.temperature = fields.temperature ?? parseFloatEnv(TEMPERATURE_ENV)
+    this.maxTokens = fields.maxTokens ?? parseIntegerEnv(MAX_TOKENS_ENV)
+    this.reasoningEffort = fields.reasoningEffort ?? "medium"
+    this.reasoningSummary = fields.reasoningSummary
+    this.textVerbosity = fields.textVerbosity ?? "medium"
+    this.include = fields.include ?? ["reasoning.encrypted_content"]
+    this.timeout = fields.timeout ?? (parseFloatEnv(TIMEOUT_ENV) ?? 60) * 1000
+    this.maxRetries = fields.maxRetries ?? parseIntegerEnv(MAX_RETRIES_ENV) ?? 2
     this.baseURL =
       fields.baseURL ??
       getEnvironmentVariable(BASE_URL_ENV) ??
-      "https://chatgpt.com/backend-api";
-    this.authPath = fields.authPath;
-    this.systemPromptMode = fields.systemPromptMode ?? "strict";
+      "https://chatgpt.com/backend-api"
+    this.authPath = fields.authPath
+    this.systemPromptMode = fields.systemPromptMode ?? "strict"
     this.client = new CodexClient({
       authStore: new AuthStore(fields.authPath),
       baseURL: this.baseURL,
       timeoutMs: this.timeout,
       maxRetries: this.maxRetries,
-    });
+    })
   }
 
   override get lc_aliases(): Record<string, string> {
     return {
       modelName: "model",
-    };
+    }
   }
 
   override get callKeys(): string[] {
@@ -193,11 +192,11 @@ export class ChatCodexOAuth extends BaseChatModel<
       "reasoningSummary",
       "textVerbosity",
       "include",
-    ];
+    ]
   }
 
   _llmType(): string {
-    return "codex_oauth";
+    return "codex_oauth"
   }
 
   override getLsParams(options: this["ParsedCallOptions"]): LangSmithParams {
@@ -208,7 +207,7 @@ export class ChatCodexOAuth extends BaseChatModel<
       ls_temperature: options.temperature ?? this.temperature,
       ls_max_tokens: options.maxTokens ?? this.maxTokens,
       ls_stop: options.stop,
-    };
+    }
   }
 
   override invocationParams(
@@ -234,7 +233,7 @@ export class ChatCodexOAuth extends BaseChatModel<
           ? { verbosity: options?.textVerbosity ?? this.textVerbosity }
           : undefined,
       include: options?.include ?? this.include,
-    };
+    }
   }
 
   override bindTools(
@@ -251,51 +250,51 @@ export class ChatCodexOAuth extends BaseChatModel<
         kwargs?.tool_choice as string | Record<string, unknown> | undefined,
       ),
       tools: convertTools(tools) as BindToolsInput[],
-    } as Partial<ChatCodexOAuthCallOptions>);
+    } as Partial<ChatCodexOAuthCallOptions>)
   }
 
   override withStructuredOutput<RunOutput extends Record<string, unknown>>(
     outputSchema: SerializableSchema<RunOutput>,
     config?: StructuredOutputMethodOptions<false>,
-  ): Runnable<BaseLanguageModelInput, RunOutput>;
+  ): Runnable<BaseLanguageModelInput, RunOutput>
   override withStructuredOutput<RunOutput extends Record<string, unknown>>(
     outputSchema: SerializableSchema<RunOutput>,
     config?: StructuredOutputMethodOptions<true>,
   ): Runnable<
     BaseLanguageModelInput,
     {
-      raw: BaseMessage;
-      parsed: RunOutput;
+      raw: BaseMessage
+      parsed: RunOutput
     }
-  >;
+  >
   override withStructuredOutput<RunOutput extends Record<string, unknown>>(
     outputSchema: InteropZodType<RunOutput> | Record<string, unknown>,
     config?: StructuredOutputMethodOptions<false>,
-  ): Runnable<BaseLanguageModelInput, RunOutput>;
+  ): Runnable<BaseLanguageModelInput, RunOutput>
   override withStructuredOutput<RunOutput extends Record<string, unknown>>(
     outputSchema: InteropZodType<RunOutput> | Record<string, unknown>,
     config?: StructuredOutputMethodOptions<true>,
   ): Runnable<
     BaseLanguageModelInput,
     {
-      raw: BaseMessage;
-      parsed: RunOutput;
+      raw: BaseMessage
+      parsed: RunOutput
     }
-  >;
+  >
   override withStructuredOutput<RunOutput extends Record<string, unknown>>(
     outputSchema: ZodType<RunOutput> | Record<string, unknown>,
     config?: StructuredOutputMethodOptions<false>,
-  ): Runnable<BaseLanguageModelInput, RunOutput>;
+  ): Runnable<BaseLanguageModelInput, RunOutput>
   override withStructuredOutput<RunOutput extends Record<string, unknown>>(
     outputSchema: ZodType<RunOutput> | Record<string, unknown>,
     config?: StructuredOutputMethodOptions<true>,
   ): Runnable<
     BaseLanguageModelInput,
     {
-      raw: BaseMessage;
-      parsed: RunOutput;
+      raw: BaseMessage
+      parsed: RunOutput
     }
-  >;
+  >
   override withStructuredOutput<RunOutput extends Record<string, unknown>>(
     outputSchema:
       | SerializableSchema<RunOutput>
@@ -308,26 +307,26 @@ export class ChatCodexOAuth extends BaseChatModel<
     | Runnable<
         BaseLanguageModelInput,
         {
-          raw: BaseMessage;
-          parsed: RunOutput;
+          raw: BaseMessage
+          parsed: RunOutput
         }
       > {
     if (config?.strict) {
       throw new Error(
         '"strict" mode is not supported for this model by default.',
-      );
+      )
     }
 
     if (config?.method === "jsonMode") {
       throw new Error(
         'Base withStructuredOutput implementation only supports "functionCalling" as a method.',
-      );
+      )
     }
 
-    const schema = outputSchema;
+    const schema = outputSchema
     const description =
-      getSchemaDescription(schema) ?? "A function available to call.";
-    let functionName = config?.name ?? "extract";
+      getSchemaDescription(schema) ?? "A function available to call."
+    let functionName = config?.name ?? "extract"
 
     if (
       !isInteropZodSchema(schema) &&
@@ -337,13 +336,13 @@ export class ChatCodexOAuth extends BaseChatModel<
       "name" in schema &&
       typeof schema.name === "string"
     ) {
-      functionName = schema.name;
+      functionName = schema.name
     }
 
     const asJsonSchema =
       isInteropZodSchema(schema) || isSerializableSchema(schema)
         ? toJsonSchema(schema)
-        : schema;
+        : schema
     const tools = [
       {
         type: "function" as const,
@@ -353,8 +352,8 @@ export class ChatCodexOAuth extends BaseChatModel<
           parameters: asJsonSchema,
         },
       },
-    ];
-    const outputParser = createFunctionCallingParser(schema, functionName);
+    ]
+    const outputParser = createFunctionCallingParser(schema, functionName)
 
     return assembleStructuredOutputPipeline(
       this.bindTools(tools),
@@ -366,10 +365,10 @@ export class ChatCodexOAuth extends BaseChatModel<
       | Runnable<
           BaseLanguageModelInput,
           {
-            raw: BaseMessage;
-            parsed: RunOutput;
+            raw: BaseMessage
+            parsed: RunOutput
           }
-        >;
+        >
   }
 
   private buildRequestState(
@@ -377,7 +376,7 @@ export class ChatCodexOAuth extends BaseChatModel<
     options: this["ParsedCallOptions"],
   ): RequestState {
     const strictTexts =
-      this.systemPromptMode === "strict" ? extractSystemTexts(messages) : [];
+      this.systemPromptMode === "strict" ? extractSystemTexts(messages) : []
 
     return {
       tools: options.tools?.length ? convertTools(options.tools) : undefined,
@@ -394,7 +393,7 @@ export class ChatCodexOAuth extends BaseChatModel<
         this.systemPromptMode === "strict"
           ? buildExtraInstructions(strictTexts)
           : undefined,
-    };
+    }
   }
 
   override async _generate(
@@ -402,8 +401,8 @@ export class ChatCodexOAuth extends BaseChatModel<
     options: this["ParsedCallOptions"],
     _runManager?: CallbackManagerForLLMRun,
   ): Promise<ChatResult> {
-    throwIfAborted(options.signal);
-    const state = this.buildRequestState(messages, options);
+    throwIfAborted(options.signal)
+    const state = this.buildRequestState(messages, options)
     const result = await this.client.completeWithResponse({
       inputItems: toInputItems(messages, this.systemPromptMode),
       model: this.model,
@@ -417,18 +416,18 @@ export class ChatCodexOAuth extends BaseChatModel<
       include: state.include,
       extraInstructions: state.extraInstructions,
       signal: options.signal,
-    });
+    })
 
-    const responseMetadata = extractResponseMetadata(result.response);
-    const usageMetadata = extractUsageMetadata(result.response);
-    const content = truncateAtStop(result.parsed.content, options.stop);
+    const responseMetadata = extractResponseMetadata(result.response)
+    const usageMetadata = extractUsageMetadata(result.response)
+    const content = truncateAtStop(result.parsed.content, options.stop)
     const message = new AIMessage({
       content,
       tool_calls: ensureToolCallIds(result.parsed.toolCalls),
       invalid_tool_calls: result.parsed.invalidToolCalls,
       response_metadata: responseMetadata,
       usage_metadata: usageMetadata,
-    });
+    })
 
     return {
       generations: [
@@ -447,7 +446,7 @@ export class ChatCodexOAuth extends BaseChatModel<
             }
           : undefined,
       },
-    };
+    }
   }
 
   override async *_streamResponseChunks(
@@ -455,19 +454,19 @@ export class ChatCodexOAuth extends BaseChatModel<
     options: this["ParsedCallOptions"],
     runManager?: CallbackManagerForLLMRun,
   ): AsyncGenerator<ChatGenerationChunk> {
-    throwIfAborted(options.signal);
-    const state = this.buildRequestState(messages, options);
+    throwIfAborted(options.signal)
+    const state = this.buildRequestState(messages, options)
     const stop = (options.stop ?? []).filter(
       (item): item is string => typeof item === "string" && item.length > 0,
-    );
+    )
     const maxStopLength = stop.reduce(
       (max, item) => Math.max(max, item.length),
       0,
-    );
-    const names = new Map<string, string | undefined>();
-    const indexes = new Map<string, number>();
-    let buffer = "";
-    let stopped = false;
+    )
+    const names = new Map<string, string | undefined>()
+    const indexes = new Map<string, number>()
+    let buffer = ""
+    let stopped = false
 
     for await (const event of this.client.streamEvents({
       inputItems: toInputItems(messages, this.systemPromptMode),
@@ -483,7 +482,7 @@ export class ChatCodexOAuth extends BaseChatModel<
       extraInstructions: state.extraInstructions,
       signal: options.signal,
     })) {
-      throwIfAborted(options.signal);
+      throwIfAborted(options.signal)
 
       if (isTerminalEvent(event)) {
         if (!stopped && buffer.length > 0) {
@@ -492,8 +491,8 @@ export class ChatCodexOAuth extends BaseChatModel<
               content: buffer,
             }),
             text: buffer,
-          });
-          yield chunk;
+          })
+          yield chunk
           await runManager?.handleLLMNewToken(
             buffer,
             undefined,
@@ -501,24 +500,24 @@ export class ChatCodexOAuth extends BaseChatModel<
             undefined,
             undefined,
             { chunk },
-          );
+          )
         }
 
         const rawResponse =
           typeof event.response === "object" && event.response !== null
             ? (event.response as Record<string, unknown>)
-            : null;
+            : null
         const parsed = rawResponse
           ? {
               responseMetadata: extractResponseMetadata(rawResponse),
               usageMetadata: extractUsageMetadata(rawResponse),
             }
-          : { responseMetadata: {}, usageMetadata: undefined };
+          : { responseMetadata: {}, usageMetadata: undefined }
         const assistant = rawResponse
           ? parseAssistantMessage(rawResponse)
-          : undefined;
-        const result = assistant ? ensureToolCallIds(assistant.toolCalls) : [];
-        const invalid = assistant?.invalidToolCalls ?? [];
+          : undefined
+        const result = assistant ? ensureToolCallIds(assistant.toolCalls) : []
+        const invalid = assistant?.invalidToolCalls ?? []
 
         yield new ChatGenerationChunk({
           message: new AIMessageChunk({
@@ -530,27 +529,27 @@ export class ChatCodexOAuth extends BaseChatModel<
           }),
           text: "",
           generationInfo: parsed.responseMetadata,
-        });
-        return;
+        })
+        return
       }
 
-      const added = extractToolCallItemAdded(event);
+      const added = extractToolCallItemAdded(event)
 
       if (added && !stopped) {
-        names.set(added.callId, added.name);
-        indexes.set(added.callId, added.outputIndex);
-        continue;
+        names.set(added.callId, added.name)
+        indexes.set(added.callId, added.outputIndex)
+        continue
       }
 
-      const args = extractToolCallArgsDelta(event);
+      const args = extractToolCallArgsDelta(event)
 
       if (args && !stopped) {
         if (!indexes.has(args.callId)) {
-          indexes.set(args.callId, args.outputIndex);
+          indexes.set(args.callId, args.outputIndex)
         }
 
         if (!names.has(args.callId)) {
-          names.set(args.callId, undefined);
+          names.set(args.callId, undefined)
         }
 
         const toolCallChunk: ToolCallChunk = {
@@ -559,39 +558,39 @@ export class ChatCodexOAuth extends BaseChatModel<
           name: names.get(args.callId),
           args: args.delta,
           index: indexes.get(args.callId),
-        };
+        }
         const chunk = new ChatGenerationChunk({
           message: new AIMessageChunk({
             content: "",
             tool_call_chunks: [toolCallChunk],
           }),
           text: "",
-        });
-        yield chunk;
-        continue;
+        })
+        yield chunk
+        continue
       }
 
-      const delta = extractTextDelta(event);
+      const delta = extractTextDelta(event)
 
       if (!delta || stopped) {
-        continue;
+        continue
       }
 
-      buffer += delta;
+      buffer += delta
 
       if (stop.length > 0) {
-        let earliest: number | undefined;
+        let earliest: number | undefined
 
         for (const token of stop) {
-          const index = buffer.indexOf(token);
+          const index = buffer.indexOf(token)
 
           if (index !== -1 && (earliest === undefined || index < earliest)) {
-            earliest = index;
+            earliest = index
           }
         }
 
         if (earliest !== undefined) {
-          const text = buffer.slice(0, earliest);
+          const text = buffer.slice(0, earliest)
 
           if (text) {
             const chunk = new ChatGenerationChunk({
@@ -599,8 +598,8 @@ export class ChatCodexOAuth extends BaseChatModel<
                 content: text,
               }),
               text,
-            });
-            yield chunk;
+            })
+            yield chunk
             await runManager?.handleLLMNewToken(
               text,
               undefined,
@@ -608,20 +607,20 @@ export class ChatCodexOAuth extends BaseChatModel<
               undefined,
               undefined,
               { chunk },
-            );
+            )
           }
 
-          stopped = true;
-          buffer = "";
-          continue;
+          stopped = true
+          buffer = ""
+          continue
         }
 
         const safeLength =
           maxStopLength > 1
             ? Math.max(0, buffer.length - (maxStopLength - 1))
-            : buffer.length;
-        const text = buffer.slice(0, safeLength);
-        buffer = buffer.slice(safeLength);
+            : buffer.length
+        const text = buffer.slice(0, safeLength)
+        buffer = buffer.slice(safeLength)
 
         if (text) {
           const chunk = new ChatGenerationChunk({
@@ -629,8 +628,8 @@ export class ChatCodexOAuth extends BaseChatModel<
               content: text,
             }),
             text,
-          });
-          yield chunk;
+          })
+          yield chunk
           await runManager?.handleLLMNewToken(
             text,
             undefined,
@@ -638,10 +637,10 @@ export class ChatCodexOAuth extends BaseChatModel<
             undefined,
             undefined,
             { chunk },
-          );
+          )
         }
 
-        continue;
+        continue
       }
 
       const chunk = new ChatGenerationChunk({
@@ -649,8 +648,8 @@ export class ChatCodexOAuth extends BaseChatModel<
           content: buffer,
         }),
         text: buffer,
-      });
-      yield chunk;
+      })
+      yield chunk
       await runManager?.handleLLMNewToken(
         buffer,
         undefined,
@@ -658,8 +657,8 @@ export class ChatCodexOAuth extends BaseChatModel<
         undefined,
         undefined,
         { chunk },
-      );
-      buffer = "";
+      )
+      buffer = ""
     }
   }
 }

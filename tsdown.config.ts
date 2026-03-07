@@ -1,5 +1,5 @@
-import { defineConfig } from "tsdown";
-import pkg from "./package.json" with { type: "json" };
+import { defineConfig } from "tsdown"
+import pkg from "./package.json" with { type: "json" }
 
 export default defineConfig({
   clean: true,
@@ -9,4 +9,4 @@ export default defineConfig({
   define: {
     __PKG_VERSION__: JSON.stringify(pkg.version),
   },
-});
+})
