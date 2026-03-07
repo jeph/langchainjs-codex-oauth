@@ -254,11 +254,11 @@ export class ChatCodexOAuth extends BaseChatModel<
     } as Partial<ChatCodexOAuthCallOptions>);
   }
 
-  override withStructuredOutput<RunOutput extends Record<string, any>>(
+  override withStructuredOutput<RunOutput extends Record<string, unknown>>(
     outputSchema: SerializableSchema<RunOutput>,
     config?: StructuredOutputMethodOptions<false>,
   ): Runnable<BaseLanguageModelInput, RunOutput>;
-  override withStructuredOutput<RunOutput extends Record<string, any>>(
+  override withStructuredOutput<RunOutput extends Record<string, unknown>>(
     outputSchema: SerializableSchema<RunOutput>,
     config?: StructuredOutputMethodOptions<true>,
   ): Runnable<
@@ -268,12 +268,12 @@ export class ChatCodexOAuth extends BaseChatModel<
       parsed: RunOutput;
     }
   >;
-  override withStructuredOutput<RunOutput extends Record<string, any>>(
-    outputSchema: InteropZodType<RunOutput> | Record<string, any>,
+  override withStructuredOutput<RunOutput extends Record<string, unknown>>(
+    outputSchema: InteropZodType<RunOutput> | Record<string, unknown>,
     config?: StructuredOutputMethodOptions<false>,
   ): Runnable<BaseLanguageModelInput, RunOutput>;
-  override withStructuredOutput<RunOutput extends Record<string, any>>(
-    outputSchema: InteropZodType<RunOutput> | Record<string, any>,
+  override withStructuredOutput<RunOutput extends Record<string, unknown>>(
+    outputSchema: InteropZodType<RunOutput> | Record<string, unknown>,
     config?: StructuredOutputMethodOptions<true>,
   ): Runnable<
     BaseLanguageModelInput,
@@ -282,12 +282,12 @@ export class ChatCodexOAuth extends BaseChatModel<
       parsed: RunOutput;
     }
   >;
-  override withStructuredOutput<RunOutput extends Record<string, any>>(
-    outputSchema: ZodType<RunOutput> | Record<string, any>,
+  override withStructuredOutput<RunOutput extends Record<string, unknown>>(
+    outputSchema: ZodType<RunOutput> | Record<string, unknown>,
     config?: StructuredOutputMethodOptions<false>,
   ): Runnable<BaseLanguageModelInput, RunOutput>;
-  override withStructuredOutput<RunOutput extends Record<string, any>>(
-    outputSchema: ZodType<RunOutput> | Record<string, any>,
+  override withStructuredOutput<RunOutput extends Record<string, unknown>>(
+    outputSchema: ZodType<RunOutput> | Record<string, unknown>,
     config?: StructuredOutputMethodOptions<true>,
   ): Runnable<
     BaseLanguageModelInput,
@@ -296,12 +296,12 @@ export class ChatCodexOAuth extends BaseChatModel<
       parsed: RunOutput;
     }
   >;
-  override withStructuredOutput<RunOutput extends Record<string, any>>(
+  override withStructuredOutput<RunOutput extends Record<string, unknown>>(
     outputSchema:
       | SerializableSchema<RunOutput>
       | InteropZodType<RunOutput>
       | ZodType<RunOutput>
-      | Record<string, any>,
+      | Record<string, unknown>,
     config?: StructuredOutputMethodOptions<boolean>,
   ):
     | Runnable<BaseLanguageModelInput, RunOutput>

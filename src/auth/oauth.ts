@@ -248,7 +248,6 @@ export async function runLocalCallbackServer(
 ): Promise<{ code: string; state?: string } | undefined> {
   return new Promise((resolve, reject) => {
     let settled = false;
-    let server: ReturnType<typeof createServer> | undefined;
 
     const settle = (callback: () => void): void => {
       if (settled) {
@@ -278,7 +277,7 @@ export async function runLocalCallbackServer(
       settle(() => reject(new OAuthFlowError(message, { cause })));
     };
 
-    server = createServer((req, res) => {
+    const server = createServer((req, res) => {
       const url = new URL(req.url ?? "", REDIRECT_URI);
 
       if (url.pathname !== "/auth/callback") {

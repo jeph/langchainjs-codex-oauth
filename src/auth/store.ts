@@ -121,7 +121,6 @@ export class AuthStore {
     const authDir = path.dirname(this.authPath);
     const tmpPath = `${this.authPath}.${randomUUID()}.tmp`;
     const content = `${JSON.stringify(toObject(creds), null, 2)}\n`;
-    let renamed = false;
 
     await mkdir(authDir, {
       recursive: true,
@@ -142,7 +141,6 @@ export class AuthStore {
       }
 
       await rename(tmpPath, this.authPath);
-      renamed = true;
     } catch (error) {
       await unlink(tmpPath).catch(() => {
         // Ignore temp file cleanup failures.
@@ -164,11 +162,9 @@ export class AuthStore {
         );
       }
     } catch (error) {
-      if (renamed) {
-        await unlink(this.authPath).catch(() => {
-          // Ignore cleanup failures.
-        });
-      }
+      await unlink(this.authPath).catch(() => {
+        // Ignore cleanup failures.
+      });
 
       if (error instanceof CodexOAuthError) {
         throw error;
