@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -37,4 +37,24 @@ describe("AuthStore", () => {
 
     await expect(store.load()).rejects.toBeInstanceOf(NotAuthenticatedError);
   });
+
+  test.skipIf(process.platform === "win32")(
+    "writes credential files with owner-only permissions",
+    async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "codex-auth-store-"));
+      const authPath = path.join(dir, "auth.json");
+      const store = new AuthStore(authPath);
+
+      await store.save({
+        type: "oauth",
+        access: "access",
+        refresh: "refresh",
+        expires: 123,
+        accountId: "acct_123",
+      });
+
+      const authStat = await stat(authPath);
+      expect(authStat.mode & 0o077).toBe(0);
+    },
+  );
 });

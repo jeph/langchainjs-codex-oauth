@@ -85,6 +85,10 @@ interface RequestState {
   toolChoice?: string | Record<string, unknown>;
   temperature?: number;
   maxOutputTokens?: number;
+  reasoningEffort?: string;
+  reasoningSummary?: string;
+  textVerbosity?: string;
+  include?: string[];
   extraInstructions?: string;
 }
 
@@ -200,11 +204,18 @@ export class ChatCodexOAuth extends BaseChatModel<
         options?.tool_choice as string | Record<string, unknown> | undefined,
       ),
       reasoning: {
-        ...(this.reasoningEffort ? { effort: this.reasoningEffort } : {}),
-        ...(this.reasoningSummary ? { summary: this.reasoningSummary } : {}),
+        ...((options?.reasoningEffort ?? this.reasoningEffort)
+          ? { effort: options?.reasoningEffort ?? this.reasoningEffort }
+          : {}),
+        ...((options?.reasoningSummary ?? this.reasoningSummary)
+          ? { summary: options?.reasoningSummary ?? this.reasoningSummary }
+          : {}),
       },
-      text: this.textVerbosity ? { verbosity: this.textVerbosity } : undefined,
-      include: this.include,
+      text:
+        (options?.textVerbosity ?? this.textVerbosity)
+          ? { verbosity: options?.textVerbosity ?? this.textVerbosity }
+          : undefined,
+      include: options?.include ?? this.include,
     };
   }
 
@@ -239,6 +250,10 @@ export class ChatCodexOAuth extends BaseChatModel<
       ),
       temperature: options.temperature ?? this.temperature,
       maxOutputTokens: options.maxTokens ?? this.maxTokens,
+      reasoningEffort: options.reasoningEffort ?? this.reasoningEffort,
+      reasoningSummary: options.reasoningSummary ?? this.reasoningSummary,
+      textVerbosity: options.textVerbosity ?? this.textVerbosity,
+      include: options.include ?? this.include,
       extraInstructions:
         this.systemPromptMode === "strict"
           ? buildExtraInstructions(strictTexts)
@@ -260,10 +275,10 @@ export class ChatCodexOAuth extends BaseChatModel<
       toolChoice: state.toolChoice,
       temperature: state.temperature,
       maxOutputTokens: state.maxOutputTokens,
-      reasoningEffort: this.reasoningEffort,
-      reasoningSummary: this.reasoningSummary,
-      textVerbosity: this.textVerbosity,
-      include: this.include,
+      reasoningEffort: state.reasoningEffort,
+      reasoningSummary: state.reasoningSummary,
+      textVerbosity: state.textVerbosity,
+      include: state.include,
       extraInstructions: state.extraInstructions,
       signal: options.signal,
     });
@@ -325,10 +340,10 @@ export class ChatCodexOAuth extends BaseChatModel<
       toolChoice: state.toolChoice,
       temperature: state.temperature,
       maxOutputTokens: state.maxOutputTokens,
-      reasoningEffort: this.reasoningEffort,
-      reasoningSummary: this.reasoningSummary,
-      textVerbosity: this.textVerbosity,
-      include: this.include,
+      reasoningEffort: state.reasoningEffort,
+      reasoningSummary: state.reasoningSummary,
+      textVerbosity: state.textVerbosity,
+      include: state.include,
       extraInstructions: state.extraInstructions,
       signal: options.signal,
     })) {

@@ -247,18 +247,38 @@ export async function runLocalCallbackServer(
   timeoutMs = 180_000,
 ): Promise<{ code: string; state?: string } | undefined> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      server.close(() => resolve(undefined));
-    }, timeoutMs);
+    let settled = false;
+    let server: ReturnType<typeof createServer> | undefined;
 
-    const finish = (
-      value: { code: string; state?: string } | undefined,
-    ): void => {
+    const settle = (callback: () => void): void => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
       clearTimeout(timer);
-      server.close(() => resolve(value));
+
+      if (server?.listening) {
+        server.close(callback);
+        return;
+      }
+
+      callback();
     };
 
-    const server = createServer((req, res) => {
+    const timer = setTimeout(() => {
+      settle(() => resolve(undefined));
+    }, timeoutMs);
+
+    const finish = (value: { code: string; state?: string }): void => {
+      settle(() => resolve(value));
+    };
+
+    const fail = (message: string, cause?: unknown): void => {
+      settle(() => reject(new OAuthFlowError(message, { cause })));
+    };
+
+    server = createServer((req, res) => {
       const url = new URL(req.url ?? "", REDIRECT_URI);
 
       if (url.pathname !== "/auth/callback") {
@@ -272,13 +292,13 @@ export async function runLocalCallbackServer(
       if (params.error) {
         const message = params.errorDescription ?? params.error;
         writeHtml(res, 400, errorHtml(message));
-        finish(undefined);
+        fail(`OAuth callback failed: ${message}`);
         return;
       }
 
       if (!params.code) {
         writeHtml(res, 400, errorHtml("Missing authorization code."));
-        finish(undefined);
+        fail("OAuth callback did not include an authorization code.");
         return;
       }
 
@@ -287,14 +307,12 @@ export async function runLocalCallbackServer(
     });
 
     server.on("error", (error) => {
-      clearTimeout(timer);
-
       const message =
         isRecord(error) && asString(error.code) === "EADDRINUSE"
           ? `Port ${OAUTH_PORT} is unavailable. Re-run with --manual or close other Codex sessions.`
           : "Failed to start the OAuth callback server.";
 
-      reject(new OAuthFlowError(message, { cause: error }));
+      fail(message, error);
     });
 
     server.listen(OAUTH_PORT, "127.0.0.1");

@@ -1,16 +1,19 @@
 import {
   chmod,
   mkdir,
+  open,
   readFile,
   rename,
+  stat,
   unlink,
   writeFile,
 } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
 import { getEnvironmentVariable } from "@langchain/core/utils/env";
 
-import { NotAuthenticatedError } from "../errors.js";
+import { CodexOAuthError, NotAuthenticatedError } from "../errors.js";
 import { asInteger, asString, isRecord } from "../utils/json.js";
 
 export interface OAuthCredentials {
@@ -115,14 +118,37 @@ export class AuthStore {
   }
 
   async save(creds: OAuthCredentials): Promise<void> {
-    await mkdir(path.dirname(this.authPath), { recursive: true });
-    const tmp = `${this.authPath}.tmp`;
-    await writeFile(
-      `${tmp}`,
-      `${JSON.stringify(toObject(creds), null, 2)}\n`,
-      "utf8",
-    );
-    await rename(tmp, this.authPath);
+    const authDir = path.dirname(this.authPath);
+    const tmpPath = `${this.authPath}.${randomUUID()}.tmp`;
+    const content = `${JSON.stringify(toObject(creds), null, 2)}\n`;
+    let renamed = false;
+
+    await mkdir(authDir, {
+      recursive: true,
+      ...(process.platform === "win32" ? {} : { mode: 0o700 }),
+    });
+
+    try {
+      if (process.platform === "win32") {
+        await writeFile(tmpPath, content, "utf8");
+      } else {
+        const handle = await open(tmpPath, "wx", 0o600);
+
+        try {
+          await handle.writeFile(content, "utf8");
+        } finally {
+          await handle.close();
+        }
+      }
+
+      await rename(tmpPath, this.authPath);
+      renamed = true;
+    } catch (error) {
+      await unlink(tmpPath).catch(() => {
+        // Ignore temp file cleanup failures.
+      });
+      throw error;
+    }
 
     if (process.platform === "win32") {
       return;
@@ -130,8 +156,28 @@ export class AuthStore {
 
     try {
       await chmod(this.authPath, 0o600);
-    } catch {
-      // Best effort only.
+      const authStat = await stat(this.authPath);
+
+      if ((authStat.mode & 0o077) !== 0) {
+        throw new CodexOAuthError(
+          `Auth file permissions are too open at ${this.authPath}. Refusing to keep credentials on disk.`,
+        );
+      }
+    } catch (error) {
+      if (renamed) {
+        await unlink(this.authPath).catch(() => {
+          // Ignore cleanup failures.
+        });
+      }
+
+      if (error instanceof CodexOAuthError) {
+        throw error;
+      }
+
+      throw new CodexOAuthError(
+        `Unable to secure auth file permissions at ${this.authPath}.`,
+        { cause: error },
+      );
     }
   }
 

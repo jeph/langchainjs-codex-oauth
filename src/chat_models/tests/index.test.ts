@@ -57,6 +57,44 @@ describe("ChatCodexOAuth", () => {
     expect(inputItems?.[0]?.role).toBe("developer");
   });
 
+  test("passes per-call request overrides on invoke", async () => {
+    const model = new ChatCodexOAuth({
+      model: "gpt-5.2-codex",
+      reasoningEffort: "medium",
+      textVerbosity: "medium",
+      include: ["reasoning.encrypted_content"],
+    });
+    let captured: Record<string, unknown> | undefined;
+
+    vi.spyOn(model.client, "completeWithResponse").mockImplementation(
+      async (input) => {
+        captured = input as unknown as Record<string, unknown>;
+        return {
+          parsed: {
+            content: "ok",
+            toolCalls: [],
+            invalidToolCalls: [],
+          },
+          response: { output: [], status: "completed" },
+        };
+      },
+    );
+
+    await model.invoke([new HumanMessage("hi")], {
+      reasoningEffort: "low",
+      reasoningSummary: "brief",
+      textVerbosity: "high",
+      include: ["custom.include"],
+    });
+
+    expect(captured).toMatchObject({
+      reasoningEffort: "low",
+      reasoningSummary: "brief",
+      textVerbosity: "high",
+      include: ["custom.include"],
+    });
+  });
+
   test("emits tool call chunks while streaming", async () => {
     const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" });
 
@@ -142,5 +180,41 @@ describe("ChatCodexOAuth", () => {
     }
 
     expect(parts.join("")).toBe("hello ");
+  });
+
+  test("passes per-call request overrides while streaming", async () => {
+    const model = new ChatCodexOAuth({
+      model: "gpt-5.2-codex",
+      reasoningEffort: "medium",
+      textVerbosity: "medium",
+      include: ["reasoning.encrypted_content"],
+    });
+    let captured: Record<string, unknown> | undefined;
+
+    vi.spyOn(model.client, "streamEvents").mockImplementation(
+      async function* (input) {
+        captured = input as unknown as Record<string, unknown>;
+        yield {
+          type: "response.done",
+          response: { output: [], status: "completed" },
+        };
+      },
+    );
+
+    for await (const _chunk of await model.stream([new HumanMessage("hi")], {
+      reasoningEffort: "low",
+      reasoningSummary: "brief",
+      textVerbosity: "high",
+      include: ["custom.include"],
+    })) {
+      // Exhaust the stream.
+    }
+
+    expect(captured).toMatchObject({
+      reasoningEffort: "low",
+      reasoningSummary: "brief",
+      textVerbosity: "high",
+      include: ["custom.include"],
+    });
   });
 });
