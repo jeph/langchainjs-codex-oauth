@@ -68,6 +68,14 @@ pnpm test:int
 
 These tests are skipped automatically when the local auth file is missing.
 
+## Release validation
+
+```bash
+pnpm build:release
+```
+
+This runs the full release gate: clean, lint, typecheck, unit tests, live integration tests, extended live integration tests, and the final distribution build.
+
 ## Notes
 
 - v1 is Node-only.
