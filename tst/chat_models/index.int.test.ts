@@ -20,8 +20,8 @@ import { describe, expect, test } from "vitest"
 import { tool } from "langchain"
 import { z } from "zod"
 
-import { defaultAuthPath } from "../../src/auth/store.js"
-import { ChatCodexOAuth } from "../../src/chat_models/index.js"
+import { defaultAuthPath } from "../../src/auth/index.js"
+import { ChatCodexOAuth } from "../../src/index.js"
 
 const hasAuth = existsSync(defaultAuthPath())
 const modelName = process.env.LANGCHAINJS_CODEX_OAUTH_MODEL ?? "gpt-5.2-codex"
@@ -150,9 +150,11 @@ describe.skipIf(!hasAuth)("ChatCodexOAuth live integration", () => {
     const deltaChunks = chunks.filter(
       (chunk) => (chunk.tool_call_chunks?.length ?? 0) > 0,
     )
-    const streamedArgs = deltaChunks.flatMap((chunk) =>
-      chunk.tool_call_chunks?.map((toolCallChunk) => toolCallChunk.args ?? "") ??
-      [],
+    const streamedArgs = deltaChunks.flatMap(
+      (chunk) =>
+        chunk.tool_call_chunks?.map(
+          (toolCallChunk) => toolCallChunk.args ?? "",
+        ) ?? [],
     )
     const finalCallId = full?.tool_calls?.[0]?.id
 

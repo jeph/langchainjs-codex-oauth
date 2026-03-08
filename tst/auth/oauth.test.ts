@@ -6,7 +6,7 @@ import {
   parseAuthorizationInput,
   REDIRECT_URI,
   runLocalCallbackServer,
-} from "../../src/auth/oauth.js"
+} from "../../src/auth/index.js"
 
 async function deliverCallback(
   query: string,

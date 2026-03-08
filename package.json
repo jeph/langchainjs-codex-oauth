@@ -27,12 +27,13 @@
     "langchainjs-codex-oauth": "./bin/langchainjs-codex-oauth.js"
   },
   "scripts": {
-    "build": "pnpm run clean && pnpm run lint && pnpm run typecheck && pnpm run build:dist",
+    "build": "pnpm run clean && pnpm run lint && pnpm run typecheck && pnpm run typecheck:build && pnpm run build:dist && pnpm run test:exports",
     "build:dist": "tsup",
-    "build:release": "pnpm run clean && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run test:int && pnpm run test:int:extended && pnpm run build:dist",
+    "build:release": "pnpm run clean && pnpm run lint && pnpm run typecheck && pnpm run typecheck:build && pnpm run test && pnpm run test:int && pnpm run test:int:extended && pnpm run build:dist && pnpm run test:exports",
     "clean": "node -e \"import('node:fs').then(fs => fs.rmSync('dist', { force: true, recursive: true }))\"",
     "prepublishOnly": "pnpm run build:release",
     "typecheck": "tsc --noEmit",
+    "typecheck:build": "tsc --project tsconfig.build.json --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
@@ -48,7 +49,8 @@
     "example:hello": "tsx examples/langchain/hello.ts",
     "example:tools": "tsx examples/langchain/tools.ts",
     "example:agent": "tsx examples/langgraph/agent.ts",
-    "smoke:live": "tsx examples/langchain/hello.ts"
+    "smoke:live": "tsx examples/langchain/hello.ts",
+    "test:exports": "node test_exports.mjs"
   },
   "dependencies": {
     "zod": "^4.3.6"
@@ -80,6 +82,36 @@
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
+      }
+    },
+    "./auth": {
+      "import": {
+        "types": "./dist/auth/index.d.ts",
+        "default": "./dist/auth/index.mjs"
+      },
+      "require": {
+        "types": "./dist/auth/index.d.cts",
+        "default": "./dist/auth/index.cjs"
+      }
+    },
+    "./client": {
+      "import": {
+        "types": "./dist/client/index.d.ts",
+        "default": "./dist/client/index.mjs"
+      },
+      "require": {
+        "types": "./dist/client/index.d.cts",
+        "default": "./dist/client/index.cjs"
+      }
+    },
+    "./errors": {
+      "import": {
+        "types": "./dist/errors.d.ts",
+        "default": "./dist/errors.mjs"
+      },
+      "require": {
+        "types": "./dist/errors.d.cts",
+        "default": "./dist/errors.cjs"
       }
     },
     "./package.json": "./package.json"

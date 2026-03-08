@@ -126,6 +126,15 @@ console.log(result.text)
 
 `ChatCodexOAuth` also supports `.stream(...)`, `.batch(...)`, `.bindTools(...)`, and `.withStructuredOutput(...)`.
 
+## Advanced imports
+
+If you need the lower-level auth store or raw Codex client, import them from subpaths:
+
+```ts
+import { AuthStore, defaultAuthPath } from "langchainjs-codex-oauth/auth"
+import { CodexClient, DEFAULT_INCLUDE } from "langchainjs-codex-oauth/client"
+```
+
 ## Tool Calling
 
 ```ts
@@ -203,10 +212,10 @@ Constructor options:
 - `model`: model name to request, default `gpt-5.2-codex`
 - `temperature`
 - `maxTokens`
-- `reasoningEffort`
-- `reasoningSummary`
-- `textVerbosity`
-- `include`
+- `reasoningEffort`: `"none"`, `"low"`, `"medium"` (default), `"high"`, or `"xhigh"`
+- `reasoningSummary`: `"brief"` or another provider-supported string
+- `textVerbosity`: `"low"`, `"medium"` (default), or `"high"`
+- `include`: for example `["reasoning.encrypted_content"]`
 - `timeout`: request timeout in milliseconds
 - `maxRetries`
 - `baseURL`

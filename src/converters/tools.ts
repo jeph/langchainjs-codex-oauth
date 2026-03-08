@@ -1,24 +1,58 @@
 import type { BindToolsInput } from "@langchain/core/language_models/chat_models"
-import type { ToolDefinition } from "@langchain/core/language_models/base"
+import type {
+  FunctionCallOption,
+  ToolDefinition,
+} from "@langchain/core/language_models/base"
 import { convertToOpenAITool } from "@langchain/core/utils/function_calling"
 
+import type {
+  CodexAllowedToolsChoice,
+  CodexBackendTool,
+  CodexCustomTool,
+  CodexExperimentalTool,
+  CodexFunctionTool,
+  CodexToolChoice,
+  CodexToolReference,
+} from "../client/types.js"
 import { isRecord } from "../utils/json.js"
 
-function isOpenAIToolSchema(
-  value: unknown,
-): value is { type: "function"; function: Record<string, unknown> } {
+function isOpenAIToolSchema(value: unknown): value is ToolDefinition {
   return (
     isRecord(value) && value.type === "function" && isRecord(value.function)
   )
 }
 
-function isResponsesToolSchema(
-  value: unknown,
-): value is { type: "function"; name: string } & Record<string, unknown> {
+function isCodexFunctionTool(value: unknown): value is CodexFunctionTool {
   return (
     isRecord(value) &&
     value.type === "function" &&
     typeof value.name === "string"
+  )
+}
+
+function isCodexCustomTool(value: unknown): value is CodexCustomTool {
+  return (
+    isRecord(value) && value.type === "custom" && typeof value.name === "string"
+  )
+}
+
+function isCodexExperimentalTool(
+  value: unknown,
+): value is CodexExperimentalTool {
+  return (
+    isRecord(value) &&
+    typeof value.type === "string" &&
+    value.type !== "function" &&
+    value.type !== "custom" &&
+    value.type !== "allowed_tools"
+  )
+}
+
+function isCodexBackendTool(value: unknown): value is CodexBackendTool {
+  return (
+    isCodexFunctionTool(value) ||
+    isCodexCustomTool(value) ||
+    isCodexExperimentalTool(value)
   )
 }
 
@@ -35,9 +69,36 @@ function isOpenAIFunctionSchema(
   )
 }
 
-export function convertTools(
-  tools: BindToolsInput[],
-): Array<Record<string, unknown>> {
+function isFunctionCallOption(value: unknown): value is FunctionCallOption {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.type === "undefined"
+  )
+}
+
+function isCodexToolReference(value: unknown): value is CodexToolReference {
+  return (
+    isRecord(value) &&
+    typeof value.type === "string" &&
+    value.type !== "allowed_tools" &&
+    typeof value.name === "string"
+  )
+}
+
+function isCodexAllowedToolsChoice(
+  value: unknown,
+): value is CodexAllowedToolsChoice {
+  return (
+    isRecord(value) &&
+    value.type === "allowed_tools" &&
+    (value.mode === "auto" || value.mode === "required") &&
+    Array.isArray(value.tools) &&
+    value.tools.every(isCodexToolReference)
+  )
+}
+
+export function convertTools(tools: BindToolsInput[]): CodexBackendTool[] {
   return tools.map((tool) => {
     if (isOpenAIToolSchema(tool)) {
       return {
@@ -46,7 +107,7 @@ export function convertTools(
       }
     }
 
-    if (isResponsesToolSchema(tool)) {
+    if (isCodexBackendTool(tool)) {
       return tool
     }
 
@@ -67,8 +128,8 @@ export function convertTools(
 }
 
 export function normalizeToolChoice(
-  toolChoice?: string | Record<string, unknown>,
-): string | Record<string, unknown> | undefined {
+  toolChoice?: unknown,
+): CodexToolChoice | undefined {
   if (toolChoice == null) {
     return undefined
   }
@@ -78,15 +139,27 @@ export function normalizeToolChoice(
     return typeof name === "string" ? { type: "function", name } : undefined
   }
 
-  if (isResponsesToolSchema(toolChoice)) {
+  if (isFunctionCallOption(toolChoice)) {
+    return { type: "function", name: toolChoice.name }
+  }
+
+  if (isCodexAllowedToolsChoice(toolChoice)) {
+    return toolChoice
+  }
+
+  if (isCodexToolReference(toolChoice)) {
     return toolChoice
   }
 
   if (typeof toolChoice !== "string") {
-    return toolChoice
+    return undefined
   }
 
   const value = toolChoice.trim()
+  if (!value) {
+    return undefined
+  }
+
   const lowered = value.toLowerCase()
 
   if (lowered === "any") {

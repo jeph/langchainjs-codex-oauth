@@ -10,13 +10,17 @@ import { CodexAPIError, NotAuthenticatedError } from "../errors.js"
 import { normalizeModel } from "../converters/messages.js"
 import { extractTextDelta, isTerminalEvent, iterSseEvents } from "./sse.js"
 import { getCodexInstructions } from "./instructions.js"
-import type { CodexRequestParams, CompletionResult } from "./types.js"
+import type {
+  CodexInclude,
+  CodexRequestParams,
+  CompletionResult,
+} from "./types.js"
 import { parseAssistantMessage } from "../converters/responses.js"
 import { asString, isRecord, parseJsonObject } from "../utils/json.js"
 
 export const CODEX_BASE_URL = "https://chatgpt.com/backend-api"
 export const CODEX_RESPONSES_PATH = "/codex/responses"
-export const DEFAULT_INCLUDE = ["reasoning.encrypted_content"]
+export const DEFAULT_INCLUDE: CodexInclude[] = ["reasoning.encrypted_content"]
 
 export interface CodexClientOptions {
   authStore?: AuthStore

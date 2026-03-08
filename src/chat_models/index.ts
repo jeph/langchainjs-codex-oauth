@@ -34,7 +34,15 @@ import type { ZodType } from "zod"
 
 import { AuthStore } from "../auth/store.js"
 import { CodexClient } from "../client/codex_client.js"
-import type { CodexRequestParams, SystemPromptMode } from "../client/types.js"
+import type {
+  CodexBackendTool,
+  CodexInclude,
+  CodexRequestParams,
+  ReasoningEffort,
+  ReasoningSummary,
+  SystemPromptMode,
+  TextVerbosity,
+} from "../client/types.js"
 import { extractTextDelta, isTerminalEvent } from "../client/sse.js"
 import {
   buildExtraInstructions,
@@ -100,14 +108,14 @@ function throwIfAborted(signal?: AbortSignal): void {
 }
 
 interface RequestState {
-  tools?: Array<Record<string, unknown>>
-  toolChoice?: string | Record<string, unknown>
+  tools?: CodexBackendTool[]
+  toolChoice?: CodexRequestParams["toolChoice"]
   temperature?: number
   maxOutputTokens?: number
-  reasoningEffort?: string
-  reasoningSummary?: string
-  textVerbosity?: string
-  include?: string[]
+  reasoningEffort?: ReasoningEffort
+  reasoningSummary?: ReasoningSummary
+  textVerbosity?: TextVerbosity
+  include?: CodexInclude[]
   extraInstructions?: string
 }
 
@@ -151,13 +159,13 @@ export class ChatCodexOAuth extends BaseChatModel<
 
   maxTokens?: number
 
-  reasoningEffort?: string
+  reasoningEffort?: ReasoningEffort
 
-  reasoningSummary?: string
+  reasoningSummary?: ReasoningSummary
 
-  textVerbosity?: string
+  textVerbosity?: TextVerbosity
 
-  include?: string[]
+  include?: CodexInclude[]
 
   timeout: number
 
@@ -240,9 +248,7 @@ export class ChatCodexOAuth extends BaseChatModel<
       model: this.model,
       temperature: options?.temperature ?? this.temperature,
       max_output_tokens: options?.maxTokens ?? this.maxTokens,
-      tool_choice: normalizeToolChoice(
-        options?.tool_choice as string | Record<string, unknown> | undefined,
-      ),
+      tool_choice: normalizeToolChoice(options?.tool_choice),
       reasoning: {
         ...((options?.reasoningEffort ?? this.reasoningEffort)
           ? { effort: options?.reasoningEffort ?? this.reasoningEffort }
@@ -269,10 +275,8 @@ export class ChatCodexOAuth extends BaseChatModel<
   > {
     return this.withConfig({
       ...kwargs,
-      tool_choice: normalizeToolChoice(
-        kwargs?.tool_choice as string | Record<string, unknown> | undefined,
-      ),
-      tools: convertTools(tools) as BindToolsInput[],
+      tool_choice: normalizeToolChoice(kwargs?.tool_choice),
+      tools,
     } as Partial<ChatCodexOAuthCallOptions>)
   }
 
@@ -392,9 +396,7 @@ export class ChatCodexOAuth extends BaseChatModel<
 
     return {
       tools: options.tools?.length ? convertTools(options.tools) : undefined,
-      toolChoice: normalizeToolChoice(
-        options.tool_choice as string | Record<string, unknown> | undefined,
-      ),
+      toolChoice: normalizeToolChoice(options.tool_choice),
       temperature: options.temperature ?? this.temperature,
       maxOutputTokens: options.maxTokens ?? this.maxTokens,
       reasoningEffort: options.reasoningEffort ?? this.reasoningEffort,
@@ -572,8 +574,7 @@ export class ChatCodexOAuth extends BaseChatModel<
 
       if (args && !stopped) {
         const callId =
-          args.callId ??
-          (args.itemId ? itemIds.get(args.itemId) : undefined)
+          args.callId ?? (args.itemId ? itemIds.get(args.itemId) : undefined)
 
         if (!callId) {
           continue

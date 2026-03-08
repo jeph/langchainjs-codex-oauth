@@ -18,8 +18,8 @@ import { createAgent, tool } from "langchain"
 import { describe, expect, test } from "vitest"
 import { z } from "zod"
 
-import { defaultAuthPath } from "../../src/auth/store.js"
-import { ChatCodexOAuth } from "../../src/chat_models/index.js"
+import { defaultAuthPath } from "../../src/auth/index.js"
+import { ChatCodexOAuth } from "../../src/index.js"
 
 const hasAuth = existsSync(defaultAuthPath())
 const modelName = process.env.LANGCHAINJS_CODEX_OAUTH_MODEL ?? "gpt-5.2-codex"
