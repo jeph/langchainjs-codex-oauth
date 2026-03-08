@@ -213,7 +213,7 @@ Constructor options:
 - `temperature`
 - `maxTokens`
 - `reasoningEffort`: `"none"`, `"low"`, `"medium"` (default), `"high"`, or `"xhigh"`
-- `reasoningSummary`: `"brief"` or another provider-supported string
+- `reasoningSummary`: `"concise"`, `"detailed"`, or `"auto"`
 - `textVerbosity`: `"low"`, `"medium"` (default), or `"high"`
 - `include`: for example `["reasoning.encrypted_content"]`
 - `timeout`: request timeout in milliseconds

@@ -105,14 +105,14 @@ describe("ChatCodexOAuth", () => {
 
     await model.invoke([new HumanMessage("hi")], {
       reasoningEffort: "low",
-      reasoningSummary: "brief",
+      reasoningSummary: "concise",
       textVerbosity: "high",
       include: ["custom.include"],
     })
 
     expect(captured).toMatchObject({
       reasoningEffort: "low",
-      reasoningSummary: "brief",
+      reasoningSummary: "concise",
       textVerbosity: "high",
       include: ["custom.include"],
     })
@@ -370,7 +370,7 @@ describe("ChatCodexOAuth", () => {
 
     for await (const _chunk of await model.stream([new HumanMessage("hi")], {
       reasoningEffort: "low",
-      reasoningSummary: "brief",
+      reasoningSummary: "concise",
       textVerbosity: "high",
       include: ["custom.include"],
     })) {
@@ -379,7 +379,7 @@ describe("ChatCodexOAuth", () => {
 
     expect(captured).toMatchObject({
       reasoningEffort: "low",
-      reasoningSummary: "brief",
+      reasoningSummary: "concise",
       textVerbosity: "high",
       include: ["custom.include"],
     })

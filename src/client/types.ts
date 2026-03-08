@@ -6,7 +6,7 @@ type OpenString = string & Record<never, never>
 
 export type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh"
 
-export type ReasoningSummary = "brief" | OpenString
+export type ReasoningSummary = "concise" | "detailed" | "auto"
 
 export type TextVerbosity = "low" | "medium" | "high"
 
