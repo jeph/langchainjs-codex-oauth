@@ -3,15 +3,22 @@ import type {
   BaseChatModelParams,
   BindToolsInput,
 } from "@langchain/core/language_models/chat_models"
+import type {
+  FunctionCallOption,
+  ToolDefinition,
+} from "@langchain/core/language_models/base"
 
 export type {
+  CodexAllowedToolsChoice,
   CodexInclude,
+  CodexToolReference,
   ReasoningEffort,
   ReasoningSummary,
   SystemPromptMode,
   TextVerbosity,
 } from "../client/types.js"
 import type {
+  CodexToolChoice,
   CodexInclude,
   ReasoningEffort,
   ReasoningSummary,
@@ -22,11 +29,11 @@ import type {
 type OpenToolName = string & Record<never, never>
 
 export type ChatCodexOAuthToolChoice =
-  | "auto"
   | "any"
-  | "none"
+  | CodexToolChoice
   | OpenToolName
-  | Record<string, unknown>
+  | FunctionCallOption
+  | ToolDefinition
 
 export interface ChatCodexOAuthFields {
   temperature?: number

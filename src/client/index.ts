@@ -5,10 +5,16 @@ export {
   type CodexClientOptions,
 } from "./codex_client.js"
 export type {
+  CodexAllowedToolsChoice,
+  CodexBackendTool,
+  CodexCustomTool,
+  CodexExperimentalTool,
+  CodexFunctionTool,
   CodexInclude,
   CodexInputItem,
   CodexInvalidToolCall,
   CodexRequestParams,
+  CodexToolReference,
   CodexToolCall,
   CodexToolChoice,
   CompletionResult,

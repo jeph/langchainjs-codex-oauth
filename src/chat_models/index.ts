@@ -35,9 +35,9 @@ import type { ZodType } from "zod"
 import { AuthStore } from "../auth/store.js"
 import { CodexClient } from "../client/codex_client.js"
 import type {
+  CodexBackendTool,
   CodexInclude,
   CodexRequestParams,
-  CodexToolChoice,
   ReasoningEffort,
   ReasoningSummary,
   SystemPromptMode,
@@ -108,8 +108,8 @@ function throwIfAborted(signal?: AbortSignal): void {
 }
 
 interface RequestState {
-  tools?: Array<Record<string, unknown>>
-  toolChoice?: CodexToolChoice
+  tools?: CodexBackendTool[]
+  toolChoice?: CodexRequestParams["toolChoice"]
   temperature?: number
   maxOutputTokens?: number
   reasoningEffort?: ReasoningEffort
@@ -248,9 +248,7 @@ export class ChatCodexOAuth extends BaseChatModel<
       model: this.model,
       temperature: options?.temperature ?? this.temperature,
       max_output_tokens: options?.maxTokens ?? this.maxTokens,
-      tool_choice: normalizeToolChoice(
-        options?.tool_choice as CodexToolChoice | undefined,
-      ),
+      tool_choice: normalizeToolChoice(options?.tool_choice),
       reasoning: {
         ...((options?.reasoningEffort ?? this.reasoningEffort)
           ? { effort: options?.reasoningEffort ?? this.reasoningEffort }
@@ -277,10 +275,8 @@ export class ChatCodexOAuth extends BaseChatModel<
   > {
     return this.withConfig({
       ...kwargs,
-      tool_choice: normalizeToolChoice(
-        kwargs?.tool_choice as CodexToolChoice | undefined,
-      ),
-      tools: convertTools(tools) as BindToolsInput[],
+      tool_choice: normalizeToolChoice(kwargs?.tool_choice),
+      tools,
     } as Partial<ChatCodexOAuthCallOptions>)
   }
 
@@ -400,9 +396,7 @@ export class ChatCodexOAuth extends BaseChatModel<
 
     return {
       tools: options.tools?.length ? convertTools(options.tools) : undefined,
-      toolChoice: normalizeToolChoice(
-        options.tool_choice as CodexToolChoice | undefined,
-      ),
+      toolChoice: normalizeToolChoice(options.tool_choice),
       temperature: options.temperature ?? this.temperature,
       maxOutputTokens: options.maxTokens ?? this.maxTokens,
       reasoningEffort: options.reasoningEffort ?? this.reasoningEffort,

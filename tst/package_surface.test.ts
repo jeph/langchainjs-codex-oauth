@@ -20,8 +20,13 @@ import {
 import {
   CodexClient,
   DEFAULT_INCLUDE,
+  type CodexAllowedToolsChoice,
+  type CodexBackendTool,
   type CodexClientOptions,
+  type CodexFunctionTool,
   type CodexRequestParams,
+  type CodexToolChoice,
+  type CodexToolReference,
   type CompletionResult,
 } from "../src/client/index.js"
 
@@ -39,7 +44,30 @@ describe("package surface", () => {
     const reasoningSummary: ReasoningSummary = "brief"
     const textVerbosity: TextVerbosity = "high"
     const include: CodexInclude = "reasoning.encrypted_content"
-    const toolChoice: ChatCodexOAuthToolChoice = "any"
+    const toolRef: CodexToolReference = {
+      type: "function",
+      name: "lookup_inventory",
+    }
+    const allowedToolsChoice: CodexAllowedToolsChoice = {
+      type: "allowed_tools",
+      mode: "required",
+      tools: [toolRef],
+    }
+    const backendTool: CodexFunctionTool = {
+      type: "function",
+      name: "lookup_inventory",
+      description: "Look up a single inventory value.",
+      parameters: {
+        type: "object",
+        properties: {
+          key: { type: "string" },
+        },
+        required: ["key"],
+      },
+    }
+    const toolChoice: ChatCodexOAuthToolChoice = allowedToolsChoice
+    const clientToolChoice: CodexToolChoice = allowedToolsChoice
+    const backendTools: CodexBackendTool[] = [backendTool]
 
     const params = {
       model: "gpt-5.2-codex",
@@ -78,7 +106,8 @@ describe("package surface", () => {
     const request: CodexRequestParams = {
       inputItems: [],
       model: params.model,
-      toolChoice: callOptions.tool_choice,
+      tools: backendTools,
+      toolChoice: clientToolChoice,
       reasoningEffort,
       reasoningSummary,
       textVerbosity,
@@ -105,6 +134,7 @@ describe("package surface", () => {
     expect(error).toBeInstanceOf(Error)
     expect(credentials.accountId).toBe("acct_123")
     expect(token.expiresAtMs).toBe(456)
+    expect(request.tools).toEqual(backendTools)
     expect(request.include).toEqual(["reasoning.encrypted_content"])
     expect(completion.parsed.content).toBe("ok")
     expect(REDIRECT_URI).toContain("localhost")

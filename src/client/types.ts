@@ -16,12 +16,52 @@ export type TextVerbosity = "low" | "medium" | "high"
 
 export type CodexInclude = "reasoning.encrypted_content" | OpenString
 
+export interface CodexFunctionTool {
+  type: "function"
+  name: string
+  description?: string
+  parameters?: Record<string, unknown>
+  strict?: boolean
+  [key: string]: unknown
+}
+
+export interface CodexCustomTool {
+  type: "custom"
+  name: string
+  description?: string
+  format?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface CodexExperimentalTool {
+  type: OpenString
+  name?: string
+  [key: string]: unknown
+}
+
+export type CodexBackendTool =
+  | CodexFunctionTool
+  | CodexCustomTool
+  | CodexExperimentalTool
+
+export interface CodexToolReference {
+  type: "function" | "custom" | OpenString
+  name: string
+  [key: string]: unknown
+}
+
+export interface CodexAllowedToolsChoice {
+  type: "allowed_tools"
+  mode: "auto" | "required"
+  tools: CodexToolReference[]
+}
+
 export type CodexToolChoice =
   | "auto"
   | "none"
   | "required"
-  | OpenString
-  | Record<string, unknown>
+  | CodexToolReference
+  | CodexAllowedToolsChoice
 
 export interface InputTextBlock {
   type: "input_text"
@@ -88,7 +128,7 @@ export interface CompletionResult {
 export interface CodexRequestParams {
   inputItems: CodexInputItem[]
   model: string
-  tools?: Array<Record<string, unknown>>
+  tools?: CodexBackendTool[]
   toolChoice?: CodexToolChoice
   temperature?: number
   maxOutputTokens?: number
