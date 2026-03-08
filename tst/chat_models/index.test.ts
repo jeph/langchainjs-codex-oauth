@@ -6,7 +6,7 @@ import {
 import { describe, expect, test, vi } from "vitest"
 import { z } from "zod"
 
-import { ChatCodexOAuth } from "../../src/chat_models/index.js"
+import { ChatCodexOAuth } from "../../src/index.js"
 
 describe("ChatCodexOAuth", () => {
   test("truncates stop sequences on invoke", async () => {
@@ -290,9 +290,11 @@ describe("ChatCodexOAuth", () => {
         Array.isArray(chunk.tool_call_chunks) &&
         chunk.tool_call_chunks.length > 0,
     )
-    const streamedArgs = deltaChunks.flatMap((chunk) =>
-      chunk.tool_call_chunks?.map((toolCallChunk) => toolCallChunk.args ?? "") ??
-      [],
+    const streamedArgs = deltaChunks.flatMap(
+      (chunk) =>
+        chunk.tool_call_chunks?.map(
+          (toolCallChunk) => toolCallChunk.args ?? "",
+        ) ?? [],
     )
 
     expect(deltaChunks).toHaveLength(2)

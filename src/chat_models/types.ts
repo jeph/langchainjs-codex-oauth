@@ -4,16 +4,37 @@ import type {
   BindToolsInput,
 } from "@langchain/core/language_models/chat_models"
 
-export type { SystemPromptMode } from "../client/types.js"
-import type { SystemPromptMode } from "../client/types.js"
+export type {
+  CodexInclude,
+  ReasoningEffort,
+  ReasoningSummary,
+  SystemPromptMode,
+  TextVerbosity,
+} from "../client/types.js"
+import type {
+  CodexInclude,
+  ReasoningEffort,
+  ReasoningSummary,
+  SystemPromptMode,
+  TextVerbosity,
+} from "../client/types.js"
+
+type OpenToolName = string & Record<never, never>
+
+export type ChatCodexOAuthToolChoice =
+  | "auto"
+  | "any"
+  | "none"
+  | OpenToolName
+  | Record<string, unknown>
 
 export interface ChatCodexOAuthFields {
   temperature?: number
   maxTokens?: number
-  reasoningEffort?: string
-  reasoningSummary?: string
-  textVerbosity?: string
-  include?: string[]
+  reasoningEffort?: ReasoningEffort
+  reasoningSummary?: ReasoningSummary
+  textVerbosity?: TextVerbosity
+  include?: CodexInclude[]
 }
 
 export interface ChatCodexOAuthParams
@@ -29,5 +50,6 @@ export interface ChatCodexOAuthParams
 export interface ChatCodexOAuthCallOptions
   extends BaseChatModelCallOptions, ChatCodexOAuthFields {
   tools?: BindToolsInput[]
+  tool_choice?: ChatCodexOAuthToolChoice
   signal?: AbortSignal
 }

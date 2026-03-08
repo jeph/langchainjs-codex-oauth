@@ -6,6 +6,23 @@ export type SystemPromptMode = "strict" | "default" | "disabled"
 
 export type InstructionsMode = "auto" | "cache" | "github" | "bundled"
 
+type OpenString = string & Record<never, never>
+
+export type ReasoningEffort = "low" | "medium" | "high" | OpenString
+
+export type ReasoningSummary = "brief" | OpenString
+
+export type TextVerbosity = "low" | "medium" | "high" | OpenString
+
+export type CodexInclude = "reasoning.encrypted_content" | OpenString
+
+export type CodexToolChoice =
+  | "auto"
+  | "none"
+  | "required"
+  | OpenString
+  | Record<string, unknown>
+
 export interface InputTextBlock {
   type: "input_text"
   text: string
@@ -72,13 +89,13 @@ export interface CodexRequestParams {
   inputItems: CodexInputItem[]
   model: string
   tools?: Array<Record<string, unknown>>
-  toolChoice?: string | Record<string, unknown>
+  toolChoice?: CodexToolChoice
   temperature?: number
   maxOutputTokens?: number
-  reasoningEffort?: string
-  reasoningSummary?: string
-  textVerbosity?: string
-  include?: string[]
+  reasoningEffort?: ReasoningEffort
+  reasoningSummary?: ReasoningSummary
+  textVerbosity?: TextVerbosity
+  include?: CodexInclude[]
   extraInstructions?: string
   signal?: AbortSignal
 }

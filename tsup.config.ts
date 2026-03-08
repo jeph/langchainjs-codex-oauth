@@ -9,7 +9,13 @@ const pkg = JSON.parse(
 export default defineConfig({
   clean: true,
   dts: true,
-  entry: ["./src/index.ts", "./src/bin.ts"],
+  entry: [
+    "./src/index.ts",
+    "./src/auth/index.ts",
+    "./src/client/index.ts",
+    "./src/errors.ts",
+    "./src/bin.ts",
+  ],
   format: ["esm", "cjs"],
   splitting: false,
   define: {
