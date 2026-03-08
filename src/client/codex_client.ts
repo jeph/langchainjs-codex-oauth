@@ -77,6 +77,30 @@ function throwIfAborted(signal?: AbortSignal): void {
   throw new Error("Request aborted.")
 }
 
+interface RequestRetryState {
+  readonly attempt: number
+  readonly includeToolChoice: boolean
+  readonly includeTemperature: boolean
+  readonly includeMaxOutputTokens: boolean
+}
+
+type RequestAttemptResult =
+  | {
+      readonly kind: "response"
+      readonly response: Response
+    }
+  | {
+      readonly kind: "retry"
+      readonly retryState: RequestRetryState
+    }
+
+const INITIAL_RETRY_STATE: RequestRetryState = {
+  attempt: 0,
+  includeToolChoice: true,
+  includeTemperature: true,
+  includeMaxOutputTokens: true,
+}
+
 export class CodexClient {
   readonly authStore: AuthStore
 
@@ -148,62 +172,50 @@ export class CodexClient {
 
   private buildRequestBody(
     params: CodexRequestParams,
+    retryState: RequestRetryState = INITIAL_RETRY_STATE,
   ): Record<string, unknown> {
-    const body: Record<string, unknown> = {
+    const reasoning =
+      params.reasoningEffort || params.reasoningSummary
+        ? {
+            ...(params.reasoningEffort
+              ? { effort: params.reasoningEffort }
+              : {}),
+            ...(params.reasoningSummary
+              ? { summary: params.reasoningSummary }
+              : {}),
+          }
+        : undefined
+    const text = params.textVerbosity
+      ? {
+          verbosity: params.textVerbosity,
+        }
+      : undefined
+
+    return {
       model: normalizeModel(params.model),
       store: false,
       stream: true,
       input: params.inputItems,
       include: params.include ?? DEFAULT_INCLUDE,
       instructions: params.instructions ?? "",
+      ...(params.tools ? { tools: params.tools } : {}),
+      ...(retryState.includeToolChoice && params.toolChoice !== undefined
+        ? { tool_choice: params.toolChoice }
+        : {}),
+      ...(retryState.includeTemperature && params.temperature !== undefined
+        ? { temperature: params.temperature }
+        : {}),
+      ...(retryState.includeMaxOutputTokens &&
+      params.maxOutputTokens !== undefined
+        ? { max_output_tokens: params.maxOutputTokens }
+        : {}),
+      ...(reasoning ? { reasoning } : {}),
+      ...(text ? { text } : {}),
     }
-
-    if (params.tools) {
-      body.tools = params.tools
-    }
-
-    if (params.toolChoice) {
-      body.tool_choice = params.toolChoice
-    }
-
-    if (params.temperature !== undefined) {
-      body.temperature = params.temperature
-    }
-
-    if (params.maxOutputTokens !== undefined) {
-      body.max_output_tokens = params.maxOutputTokens
-    }
-
-    if (params.reasoningEffort || params.reasoningSummary) {
-      body.reasoning = {
-        ...(params.reasoningEffort ? { effort: params.reasoningEffort } : {}),
-        ...(params.reasoningSummary
-          ? { summary: params.reasoningSummary }
-          : {}),
-      }
-    }
-
-    if (params.textVerbosity) {
-      body.text = {
-        verbosity: params.textVerbosity,
-      }
-    }
-
-    return body
   }
 
   static async toApiError(response: Response): Promise<CodexAPIError> {
-    let text = ""
-
-    try {
-      text = await response.text()
-    } catch {
-      // Ignore body parsing failures.
-    }
-
-    let statusCode = response.status
-    let message = `Codex backend request failed (HTTP ${statusCode}).`
-
+    const text = await response.text().catch(() => "")
     const parsed = text ? parseJsonObject(text) : undefined
     const errorObject =
       parsed && isRecord(parsed.error) ? parsed.error : undefined
@@ -211,10 +223,6 @@ export class CodexClient {
       ? (asString(errorObject.code) ?? asString(errorObject.type))
       : undefined
     const detail = parsed ? asString(parsed.detail) : undefined
-
-    if (code) {
-      message = `Codex backend request failed (HTTP ${statusCode}, ${code}).`
-    }
 
     const haystack = `${code ?? ""} ${detail ?? ""} ${text}`.toLowerCase()
     const usageLimit = [
@@ -225,17 +233,173 @@ export class CodexClient {
       "too many requests",
     ].some((token) => haystack.includes(token))
 
-    if (statusCode === 404 && usageLimit) {
-      statusCode = 429
-      message =
-        "Codex usage limit reached for your ChatGPT subscription (treated as HTTP 429)."
+    const normalized =
+      response.status === 404 && usageLimit
+        ? {
+            statusCode: 429,
+            message:
+              "Codex usage limit reached for your ChatGPT subscription (treated as HTTP 429).",
+          }
+        : {
+            statusCode: response.status,
+            message: code
+              ? `Codex backend request failed (HTTP ${response.status}, ${code}).`
+              : `Codex backend request failed (HTTP ${response.status}).`,
+          }
+
+    const message = text
+      ? `${normalized.message} Response excerpt: ${text.slice(0, 1_000)}`
+      : normalized.message
+
+    return new CodexAPIError(message, { statusCode: normalized.statusCode })
+  }
+
+  private async nextAttemptState(
+    retryState: RequestRetryState,
+  ): Promise<RequestRetryState> {
+    await sleep(backoffMs(retryState.attempt))
+
+    return {
+      ...retryState,
+      attempt: retryState.attempt + 1,
+    }
+  }
+
+  private async sendRequest(
+    url: string,
+    creds: OAuthCredentials,
+    params: CodexRequestParams,
+    retryState: RequestRetryState,
+  ): Promise<RequestAttemptResult> {
+    throwIfAborted(params.signal)
+
+    try {
+      return {
+        kind: "response",
+        response: await this.fetchFn(url, {
+          method: "POST",
+          headers: this.buildHeaders(creds),
+          body: JSON.stringify(this.buildRequestBody(params, retryState)),
+          signal: combineSignals(this.timeoutMs, params.signal),
+        }),
+      }
+    } catch (error) {
+      if (
+        retryState.attempt < this.maxRetries &&
+        isRetryableNetworkError(error, params.signal)
+      ) {
+        return {
+          kind: "retry",
+          retryState: await this.nextAttemptState(retryState),
+        }
+      }
+
+      throw new CodexAPIError("Network error calling Codex backend.", {
+        cause: error,
+      })
+    }
+  }
+
+  private async nextRetryStateForError(
+    params: CodexRequestParams,
+    retryState: RequestRetryState,
+    error: CodexAPIError,
+  ): Promise<RequestRetryState | undefined> {
+    const haystack = error.message.toLowerCase()
+
+    if (
+      retryState.includeToolChoice &&
+      params.toolChoice !== undefined &&
+      error.statusCode === 400 &&
+      haystack.includes("tool_choice")
+    ) {
+      return {
+        ...retryState,
+        includeToolChoice: false,
+      }
     }
 
-    if (text) {
-      message = `${message} Response excerpt: ${text.slice(0, 1_000)}`
+    if (
+      retryState.includeTemperature &&
+      params.temperature !== undefined &&
+      error.statusCode === 400 &&
+      haystack.includes("temperature")
+    ) {
+      return {
+        ...retryState,
+        includeTemperature: false,
+      }
     }
 
-    return new CodexAPIError(message, { statusCode })
+    if (
+      retryState.includeMaxOutputTokens &&
+      params.maxOutputTokens !== undefined &&
+      error.statusCode === 400 &&
+      (haystack.includes("max_output_tokens") ||
+        haystack.includes("max_tokens"))
+    ) {
+      return {
+        ...retryState,
+        includeMaxOutputTokens: false,
+      }
+    }
+
+    return retryState.attempt < this.maxRetries &&
+      isRetryableStatus(error.statusCode)
+      ? this.nextAttemptState(retryState)
+      : undefined
+  }
+
+  private async *streamEventsWithRetry(
+    url: string,
+    creds: OAuthCredentials,
+    params: CodexRequestParams,
+    retryState: RequestRetryState,
+  ): AsyncGenerator<Record<string, unknown>> {
+    const result = await this.sendRequest(url, creds, params, retryState)
+
+    if (result.kind === "retry") {
+      yield* this.streamEventsWithRetry(url, creds, params, result.retryState)
+      return
+    }
+
+    const { response } = result
+
+    if (!response.ok) {
+      const error = await CodexClient.toApiError(response)
+      const nextRetryState = await this.nextRetryStateForError(
+        params,
+        retryState,
+        error,
+      )
+
+      if (nextRetryState) {
+        yield* this.streamEventsWithRetry(url, creds, params, nextRetryState)
+        return
+      }
+
+      throw error
+    }
+
+    if (!response.body) {
+      return
+    }
+
+    for await (const event of iterSseEvents(response.body)) {
+      yield event
+    }
+  }
+
+  private async terminalResponse(
+    params: CodexRequestParams,
+  ): Promise<Record<string, unknown> | null> {
+    for await (const event of this.streamEvents(params)) {
+      if (isTerminalEvent(event)) {
+        return isRecord(event.response) ? event.response : null
+      }
+    }
+
+    return null
   }
 
   async *streamEvents(
@@ -245,110 +409,14 @@ export class CodexClient {
 
     const url = `${this.baseURL}${CODEX_RESPONSES_PATH}`
     const creds = await this.loadValidCredentials()
-    const body = this.buildRequestBody(params)
 
-    let removedToolChoice = false
-    let removedTemperature = false
-    let removedMaxOutputTokens = false
-    let attempt = 0
-
-    while (true) {
-      throwIfAborted(params.signal)
-
-      let response: Response
-
-      try {
-        response = await this.fetchFn(url, {
-          method: "POST",
-          headers: this.buildHeaders(creds),
-          body: JSON.stringify(body),
-          signal: combineSignals(this.timeoutMs, params.signal),
-        })
-      } catch (error) {
-        if (
-          attempt < this.maxRetries &&
-          isRetryableNetworkError(error, params.signal)
-        ) {
-          await sleep(backoffMs(attempt))
-          attempt += 1
-          continue
-        }
-
-        throw new CodexAPIError("Network error calling Codex backend.", {
-          cause: error,
-        })
-      }
-
-      if (!response.ok) {
-        const error = await CodexClient.toApiError(response)
-        const haystack = error.message.toLowerCase()
-
-        if (
-          !removedToolChoice &&
-          params.toolChoice !== undefined &&
-          error.statusCode === 400 &&
-          haystack.includes("tool_choice")
-        ) {
-          delete body.tool_choice
-          removedToolChoice = true
-          continue
-        }
-
-        if (
-          !removedTemperature &&
-          params.temperature !== undefined &&
-          error.statusCode === 400 &&
-          haystack.includes("temperature")
-        ) {
-          delete body.temperature
-          removedTemperature = true
-          continue
-        }
-
-        if (
-          !removedMaxOutputTokens &&
-          params.maxOutputTokens !== undefined &&
-          error.statusCode === 400 &&
-          (haystack.includes("max_output_tokens") ||
-            haystack.includes("max_tokens"))
-        ) {
-          delete body.max_output_tokens
-          removedMaxOutputTokens = true
-          continue
-        }
-
-        if (attempt < this.maxRetries && isRetryableStatus(error.statusCode)) {
-          await sleep(backoffMs(attempt))
-          attempt += 1
-          continue
-        }
-
-        throw error
-      }
-
-      if (!response.body) {
-        return
-      }
-
-      for await (const event of iterSseEvents(response.body)) {
-        yield event
-      }
-
-      return
-    }
+    yield* this.streamEventsWithRetry(url, creds, params, INITIAL_RETRY_STATE)
   }
 
   async completeWithResponse(
     params: CodexRequestParams,
   ): Promise<CompletionResult> {
-    let response: Record<string, unknown> | null = null
-
-    for await (const event of this.streamEvents(params)) {
-      if (isTerminalEvent(event)) {
-        response = isRecord(event.response) ? event.response : null
-        break
-      }
-    }
+    const response = await this.terminalResponse(params)
 
     return {
       parsed: parseAssistantMessage(response),
