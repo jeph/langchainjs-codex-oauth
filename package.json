@@ -1,6 +1,6 @@
 {
   "name": "langchainjs-codex-oauth",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Use ChatGPT Codex via OAuth as a LangChainJS chat model",
   "license": "MIT",
   "repository": {
