@@ -117,6 +117,45 @@ interface RequestState {
   instructions: string
 }
 
+interface StreamState {
+  readonly itemIds: ReadonlyMap<string, string>
+  readonly names: ReadonlyMap<string, string | undefined>
+  readonly indexes: ReadonlyMap<string, number>
+  readonly buffer: string
+  readonly stopped: boolean
+}
+
+interface StreamStep {
+  readonly state: StreamState
+  readonly textOutputs: readonly string[]
+  readonly chunk?: ChatGenerationChunk
+  readonly terminalChunk?: ChatGenerationChunk
+  readonly done: boolean
+}
+
+type ToolCallItemAdded = NonNullable<
+  ReturnType<typeof extractToolCallItemAdded>
+>
+type ToolCallArgsDelta = NonNullable<
+  ReturnType<typeof extractToolCallArgsDelta>
+>
+
+const INITIAL_STREAM_STATE: StreamState = {
+  itemIds: new Map<string, string>(),
+  names: new Map<string, string | undefined>(),
+  indexes: new Map<string, number>(),
+  buffer: "",
+  stopped: false,
+}
+
+function withMapValue<K, V>(
+  map: ReadonlyMap<K, V>,
+  key: K,
+  value: V,
+): ReadonlyMap<K, V> {
+  return new Map([...map, [key, value]])
+}
+
 function structuredOutputFunctionName(
   schema:
     | Record<string, unknown>
@@ -446,6 +485,252 @@ export class ChatCodexOAuth extends BaseChatModel<
     )
   }
 
+  private createTerminalChunk(
+    event: Record<string, unknown>,
+  ): ChatGenerationChunk {
+    const rawResponse =
+      typeof event.response === "object" && event.response !== null
+        ? (event.response as Record<string, unknown>)
+        : null
+    const parsed = rawResponse
+      ? {
+          responseMetadata: extractResponseMetadata(rawResponse),
+          usageMetadata: extractUsageMetadata(rawResponse),
+        }
+      : { responseMetadata: {}, usageMetadata: undefined }
+    const assistant = rawResponse
+      ? parseAssistantMessage(rawResponse)
+      : undefined
+    const result = assistant ? ensureToolCallIds(assistant.toolCalls) : []
+    const invalid = assistant?.invalidToolCalls ?? []
+
+    return new ChatGenerationChunk({
+      message: new AIMessageChunk({
+        content: "",
+        tool_calls: result,
+        invalid_tool_calls: invalid,
+        response_metadata: parsed.responseMetadata,
+        usage_metadata: parsed.usageMetadata,
+      }),
+      text: "",
+      generationInfo: parsed.responseMetadata,
+    })
+  }
+
+  private streamStateWithAddedToolCall(
+    streamState: StreamState,
+    added: ToolCallItemAdded,
+  ): StreamState {
+    return {
+      ...streamState,
+      itemIds: added.itemId
+        ? withMapValue(streamState.itemIds, added.itemId, added.callId)
+        : streamState.itemIds,
+      names: withMapValue(streamState.names, added.callId, added.name),
+      indexes: withMapValue(
+        streamState.indexes,
+        added.callId,
+        added.outputIndex,
+      ),
+    }
+  }
+
+  private streamStepForToolCallArgs(
+    streamState: StreamState,
+    args: ToolCallArgsDelta,
+  ): StreamStep {
+    const callId =
+      args.callId ??
+      (args.itemId ? streamState.itemIds.get(args.itemId) : undefined)
+
+    if (!callId) {
+      return {
+        state: streamState,
+        textOutputs: [],
+        done: false,
+      }
+    }
+
+    const nextState = {
+      ...streamState,
+      indexes: streamState.indexes.has(callId)
+        ? streamState.indexes
+        : withMapValue(streamState.indexes, callId, args.outputIndex),
+      names: streamState.names.has(callId)
+        ? streamState.names
+        : withMapValue(streamState.names, callId, undefined),
+    }
+    const toolCallChunk: ToolCallChunk = {
+      type: "tool_call_chunk",
+      id: callId,
+      name: nextState.names.get(callId),
+      args: args.delta,
+      index: nextState.indexes.get(callId),
+    }
+
+    return {
+      state: nextState,
+      textOutputs: [],
+      chunk: new ChatGenerationChunk({
+        message: new AIMessageChunk({
+          content: "",
+          tool_call_chunks: [toolCallChunk],
+        }),
+        text: "",
+      }),
+      done: false,
+    }
+  }
+
+  private streamStepForTextDelta(
+    streamState: StreamState,
+    delta: string,
+    stop: string[],
+    maxStopLength: number,
+  ): StreamStep {
+    const nextBuffer = `${streamState.buffer}${delta}`
+
+    if (stop.length > 0) {
+      const earliest = findEarliestStopIndex(nextBuffer, stop)
+
+      if (earliest !== undefined) {
+        return {
+          state: {
+            ...streamState,
+            buffer: "",
+            stopped: true,
+          },
+          textOutputs: [nextBuffer.slice(0, earliest)],
+          done: false,
+        }
+      }
+
+      const safeLength =
+        maxStopLength > 1
+          ? Math.max(0, nextBuffer.length - (maxStopLength - 1))
+          : nextBuffer.length
+
+      return {
+        state: {
+          ...streamState,
+          buffer: nextBuffer.slice(safeLength),
+        },
+        textOutputs: [nextBuffer.slice(0, safeLength)],
+        done: false,
+      }
+    }
+
+    return {
+      state: {
+        ...streamState,
+        buffer: "",
+      },
+      textOutputs: [nextBuffer],
+      done: false,
+    }
+  }
+
+  private processStreamEvent(
+    event: Record<string, unknown>,
+    streamState: StreamState,
+    stop: string[],
+    maxStopLength: number,
+  ): StreamStep {
+    if (isTerminalEvent(event)) {
+      return {
+        state: streamState,
+        textOutputs:
+          !streamState.stopped && streamState.buffer.length > 0
+            ? [streamState.buffer]
+            : [],
+        terminalChunk: this.createTerminalChunk(event),
+        done: true,
+      }
+    }
+
+    const added = extractToolCallItemAdded(event)
+
+    if (added && !streamState.stopped) {
+      return {
+        state: this.streamStateWithAddedToolCall(streamState, added),
+        textOutputs: [],
+        done: false,
+      }
+    }
+
+    const args = extractToolCallArgsDelta(event)
+
+    if (args && !streamState.stopped) {
+      return this.streamStepForToolCallArgs(streamState, args)
+    }
+
+    const delta = extractTextDelta(event)
+
+    return !delta || streamState.stopped
+      ? {
+          state: streamState,
+          textOutputs: [],
+          done: false,
+        }
+      : this.streamStepForTextDelta(streamState, delta, stop, maxStopLength)
+  }
+
+  private async *emitStreamStep(
+    step: StreamStep,
+    runManager?: CallbackManagerForLLMRun,
+  ): AsyncGenerator<ChatGenerationChunk> {
+    for (const text of step.textOutputs) {
+      yield* this.emitTextChunk(text, runManager)
+    }
+
+    if (step.chunk) {
+      yield step.chunk
+    }
+
+    if (step.terminalChunk) {
+      yield step.terminalChunk
+    }
+  }
+
+  private async *streamResponseEventChunks(
+    events: AsyncGenerator<Record<string, unknown>>,
+    signal: AbortSignal | undefined,
+    stop: string[],
+    maxStopLength: number,
+    runManager: CallbackManagerForLLMRun | undefined,
+    streamState: StreamState,
+  ): AsyncGenerator<ChatGenerationChunk> {
+    const next = await events.next()
+
+    if (next.done) {
+      return
+    }
+
+    throwIfAborted(signal)
+
+    const step = this.processStreamEvent(
+      next.value,
+      streamState,
+      stop,
+      maxStopLength,
+    )
+
+    yield* this.emitStreamStep(step, runManager)
+
+    if (step.done) {
+      return
+    }
+
+    yield* this.streamResponseEventChunks(
+      events,
+      signal,
+      stop,
+      maxStopLength,
+      runManager,
+      step.state,
+    )
+  }
+
   override async _generate(
     messages: BaseMessage[],
     options: this["ParsedCallOptions"],
@@ -503,133 +788,14 @@ export class ChatCodexOAuth extends BaseChatModel<
       (max, item) => Math.max(max, item.length),
       0,
     )
-    const itemIds = new Map<string, string>()
-    const names = new Map<string, string | undefined>()
-    const indexes = new Map<string, number>()
-    let buffer = ""
-    let stopped = false
 
-    for await (const event of this.client.streamEvents(request)) {
-      throwIfAborted(options.signal)
-
-      if (isTerminalEvent(event)) {
-        if (!stopped && buffer.length > 0) {
-          yield* this.emitTextChunk(buffer, runManager)
-        }
-
-        const rawResponse =
-          typeof event.response === "object" && event.response !== null
-            ? (event.response as Record<string, unknown>)
-            : null
-        const parsed = rawResponse
-          ? {
-              responseMetadata: extractResponseMetadata(rawResponse),
-              usageMetadata: extractUsageMetadata(rawResponse),
-            }
-          : { responseMetadata: {}, usageMetadata: undefined }
-        const assistant = rawResponse
-          ? parseAssistantMessage(rawResponse)
-          : undefined
-        const result = assistant ? ensureToolCallIds(assistant.toolCalls) : []
-        const invalid = assistant?.invalidToolCalls ?? []
-
-        yield new ChatGenerationChunk({
-          message: new AIMessageChunk({
-            content: "",
-            tool_calls: result,
-            invalid_tool_calls: invalid,
-            response_metadata: parsed.responseMetadata,
-            usage_metadata: parsed.usageMetadata,
-          }),
-          text: "",
-          generationInfo: parsed.responseMetadata,
-        })
-        return
-      }
-
-      const added = extractToolCallItemAdded(event)
-
-      if (added && !stopped) {
-        if (added.itemId) {
-          itemIds.set(added.itemId, added.callId)
-        }
-
-        names.set(added.callId, added.name)
-        indexes.set(added.callId, added.outputIndex)
-        continue
-      }
-
-      const args = extractToolCallArgsDelta(event)
-
-      if (args && !stopped) {
-        const callId =
-          args.callId ?? (args.itemId ? itemIds.get(args.itemId) : undefined)
-
-        if (!callId) {
-          continue
-        }
-
-        if (!indexes.has(callId)) {
-          indexes.set(callId, args.outputIndex)
-        }
-
-        if (!names.has(callId)) {
-          names.set(callId, undefined)
-        }
-
-        const toolCallChunk: ToolCallChunk = {
-          type: "tool_call_chunk",
-          id: callId,
-          name: names.get(callId),
-          args: args.delta,
-          index: indexes.get(callId),
-        }
-        const chunk = new ChatGenerationChunk({
-          message: new AIMessageChunk({
-            content: "",
-            tool_call_chunks: [toolCallChunk],
-          }),
-          text: "",
-        })
-        yield chunk
-        continue
-      }
-
-      const delta = extractTextDelta(event)
-
-      if (!delta || stopped) {
-        continue
-      }
-
-      buffer += delta
-
-      if (stop.length > 0) {
-        const earliest = findEarliestStopIndex(buffer, stop)
-
-        if (earliest !== undefined) {
-          const text = buffer.slice(0, earliest)
-
-          yield* this.emitTextChunk(text, runManager)
-
-          stopped = true
-          buffer = ""
-          continue
-        }
-
-        const safeLength =
-          maxStopLength > 1
-            ? Math.max(0, buffer.length - (maxStopLength - 1))
-            : buffer.length
-        const text = buffer.slice(0, safeLength)
-        buffer = buffer.slice(safeLength)
-
-        yield* this.emitTextChunk(text, runManager)
-
-        continue
-      }
-
-      yield* this.emitTextChunk(buffer, runManager)
-      buffer = ""
-    }
+    yield* this.streamResponseEventChunks(
+      this.client.streamEvents(request),
+      options.signal,
+      stop,
+      maxStopLength,
+      runManager,
+      INITIAL_STREAM_STATE,
+    )
   }
 }

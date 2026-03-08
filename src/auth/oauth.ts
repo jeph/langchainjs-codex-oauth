@@ -258,51 +258,30 @@ function writeHtml(
   status: number,
   html: string,
 ): void {
-  res.statusCode = status
-  res.setHeader("Content-Type", "text/html; charset=utf-8")
+  res.writeHead(status, {
+    "Content-Type": "text/html; charset=utf-8",
+  })
   res.end(html)
+}
+
+function writeStatus(
+  res: ServerResponse<IncomingMessage>,
+  status: number,
+): void {
+  res.writeHead(status)
+  res.end()
 }
 
 export async function runLocalCallbackServer(
   timeoutMs = 180_000,
 ): Promise<{ code: string; state: string } | undefined> {
   return new Promise((resolve, reject) => {
-    let settled = false
-
-    const settle = (callback: () => void): void => {
-      if (settled) {
-        return
-      }
-
-      settled = true
-      clearTimeout(timer)
-
-      if (server?.listening) {
-        server.close(callback)
-        return
-      }
-
-      callback()
-    }
-
-    const timer = setTimeout(() => {
-      settle(() => resolve(undefined))
-    }, timeoutMs)
-
-    const finish = (value: { code: string; state: string }): void => {
-      settle(() => resolve(value))
-    }
-
-    const fail = (message: string, cause?: unknown): void => {
-      settle(() => reject(new OAuthFlowError(message, { cause })))
-    }
-
+    const settled = new AbortController()
     const server = createServer((req, res) => {
       const url = new URL(req.url ?? "", REDIRECT_URI)
 
       if (url.pathname !== "/auth/callback") {
-        res.statusCode = 404
-        res.end()
+        writeStatus(res, 404)
         return
       }
 
@@ -330,6 +309,35 @@ export async function runLocalCallbackServer(
       writeHtml(res, 200, SUCCESS_HTML)
       finish({ code: params.code, state: params.state })
     })
+    const timer = setTimeout(() => {
+      settle(() => resolve(undefined))
+    }, timeoutMs)
+
+    timer.unref?.()
+
+    const settle = (callback: () => void): void => {
+      if (settled.signal.aborted) {
+        return
+      }
+
+      settled.abort()
+      clearTimeout(timer)
+
+      if (server.listening) {
+        server.close(callback)
+        return
+      }
+
+      callback()
+    }
+
+    const finish = (value: { code: string; state: string }): void => {
+      settle(() => resolve(value))
+    }
+
+    const fail = (message: string, cause?: unknown): void => {
+      settle(() => reject(new OAuthFlowError(message, { cause })))
+    }
 
     server.on("error", (error) => {
       const message =

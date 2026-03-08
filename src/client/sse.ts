@@ -22,70 +22,164 @@ async function* streamChunks(
   }
 }
 
+interface SseParserState {
+  readonly buffer: string
+  readonly data: readonly string[]
+}
+
+interface SseParserResult {
+  readonly state: SseParserState
+  readonly events: readonly Record<string, unknown>[]
+}
+
+const EMPTY_SSE_STATE: SseParserState = {
+  buffer: "",
+  data: [],
+}
+
+function emptySseResult(state: SseParserState): SseParserResult {
+  return {
+    state,
+    events: [],
+  }
+}
+
+function flushSseData(state: SseParserState): SseParserResult {
+  if (state.data.length === 0) {
+    return emptySseResult(state)
+  }
+
+  const payload = state.data.join("\n")
+  const nextState = {
+    ...state,
+    data: [],
+  }
+
+  if (payload.trim() === "[DONE]") {
+    return emptySseResult(nextState)
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(payload)
+
+    return isRecord(parsed)
+      ? {
+          state: nextState,
+          events: [parsed],
+        }
+      : emptySseResult(nextState)
+  } catch {
+    return emptySseResult(nextState)
+  }
+}
+
+function parseSseLine(state: SseParserState, line: string): SseParserResult {
+  if (line === "") {
+    return flushSseData(state)
+  }
+
+  if (line.startsWith(":")) {
+    return emptySseResult(state)
+  }
+
+  return line.startsWith("data:")
+    ? emptySseResult({
+        ...state,
+        data: [...state.data, line.slice(5).trimStart()],
+      })
+    : emptySseResult(state)
+}
+
+function parseBufferedLines(state: SseParserState): SseParserResult {
+  const lines = state.buffer.split("\n")
+  const remainder = lines.at(-1) ?? ""
+  const completeLines = lines.slice(0, -1)
+
+  return completeLines.reduce<SseParserResult>(
+    (result, rawLine) => {
+      const next = parseSseLine(result.state, rawLine.replace(/\r$/u, ""))
+
+      return {
+        state: next.state,
+        events: [...result.events, ...next.events],
+      }
+    },
+    {
+      state: {
+        ...state,
+        buffer: remainder,
+      },
+      events: [],
+    },
+  )
+}
+
+function parseSseChunk(state: SseParserState, chunk: string): SseParserResult {
+  return parseBufferedLines({
+    ...state,
+    buffer: `${state.buffer}${chunk}`,
+  })
+}
+
+function finalizeSseState(
+  state: SseParserState,
+  trailing: string,
+): SseParserResult {
+  const trailingLine = `${state.buffer}${trailing}`
+  const trailingResult = trailingLine
+    ? parseSseLine(
+        {
+          ...state,
+          buffer: "",
+        },
+        trailingLine.replace(/\r$/u, ""),
+      )
+    : emptySseResult({
+        ...state,
+        buffer: "",
+      })
+  const flushed = flushSseData(trailingResult.state)
+
+  return {
+    state: flushed.state,
+    events: [...trailingResult.events, ...flushed.events],
+  }
+}
+
+async function* emitParsedEvents(
+  events: readonly Record<string, unknown>[],
+): AsyncGenerator<Record<string, unknown>> {
+  for (const event of events) {
+    yield event
+  }
+}
+
+async function* parseStreamEvents(
+  chunks: AsyncGenerator<Uint8Array>,
+  decoder: TextDecoder,
+  state: SseParserState,
+): AsyncGenerator<Record<string, unknown>> {
+  const next = await chunks.next()
+
+  if (next.done) {
+    yield* emitParsedEvents(finalizeSseState(state, decoder.decode()).events)
+    return
+  }
+
+  const result = parseSseChunk(
+    state,
+    decoder.decode(next.value, { stream: true }),
+  )
+
+  yield* emitParsedEvents(result.events)
+  yield* parseStreamEvents(chunks, decoder, result.state)
+}
+
 export async function* iterSseEvents(
   stream: ReadableStream<Uint8Array>,
 ): AsyncGenerator<Record<string, unknown>> {
   const decoder = new TextDecoder()
-  let buffer = ""
-  let data: string[] = []
-
-  const flush = async function* (): AsyncGenerator<Record<string, unknown>> {
-    if (data.length === 0) {
-      return
-    }
-
-    const payload = data.join("\n")
-    data = []
-
-    if (payload.trim() === "[DONE]") {
-      return
-    }
-
-    try {
-      const parsed: unknown = JSON.parse(payload)
-
-      if (isRecord(parsed)) {
-        yield parsed
-      }
-    } catch {
-      // Ignore malformed event payloads.
-    }
-  }
-
-  for await (const chunk of streamChunks(stream)) {
-    buffer += decoder.decode(chunk, { stream: true })
-
-    while (buffer.includes("\n")) {
-      const index = buffer.indexOf("\n")
-      const line = buffer.slice(0, index).replace(/\r$/u, "")
-      buffer = buffer.slice(index + 1)
-
-      if (line === "") {
-        yield* flush()
-        continue
-      }
-
-      if (line.startsWith(":")) {
-        continue
-      }
-
-      if (line.startsWith("data:")) {
-        data.push(line.slice(5).trimStart())
-      }
-    }
-  }
-
-  buffer += decoder.decode()
-
-  if (buffer.length > 0) {
-    const line = buffer.replace(/\r$/u, "")
-
-    if (line.startsWith("data:")) {
-      data.push(line.slice(5).trimStart())
-    }
-  }
-
-  yield* flush()
+  yield* parseStreamEvents(streamChunks(stream), decoder, EMPTY_SSE_STATE)
 }
 
 export function isTerminalEvent(event: Record<string, unknown>): boolean {

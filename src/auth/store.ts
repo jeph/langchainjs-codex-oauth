@@ -74,6 +74,30 @@ function toObject(creds: OAuthCredentials): Record<string, unknown> {
   }
 }
 
+async function readAuthFile(authPath: string): Promise<string> {
+  try {
+    return await readFile(authPath, "utf8")
+  } catch {
+    throw new NotAuthenticatedError(authHint())
+  }
+}
+
+function parseAuthFile(raw: string, authPath: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+
+    if (isRecord(parsed)) {
+      return parsed
+    }
+  } catch {
+    // Fall through.
+  }
+
+  throw new NotAuthenticatedError(
+    `Auth file is invalid at ${authPath}. Run \`npx langchainjs-codex-oauth auth login\`.`,
+  )
+}
+
 export class AuthStore {
   readonly authPath: string
 
@@ -82,29 +106,8 @@ export class AuthStore {
   }
 
   async load(): Promise<OAuthCredentials> {
-    let raw: string
-
-    try {
-      raw = await readFile(this.authPath, "utf8")
-    } catch {
-      throw new NotAuthenticatedError(authHint())
-    }
-
-    let parsed: unknown
-
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      throw new NotAuthenticatedError(
-        `Auth file is invalid at ${this.authPath}. Run \`npx langchainjs-codex-oauth auth login\`.`,
-      )
-    }
-
-    if (!isRecord(parsed)) {
-      throw new NotAuthenticatedError(
-        `Auth file is invalid at ${this.authPath}. Run \`npx langchainjs-codex-oauth auth login\`.`,
-      )
-    }
+    const raw = await readAuthFile(this.authPath)
+    const parsed = parseAuthFile(raw, this.authPath)
 
     const creds = fromObject(parsed)
 
