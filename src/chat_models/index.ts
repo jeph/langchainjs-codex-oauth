@@ -40,14 +40,12 @@ import type {
   CodexRequestParams,
   ReasoningEffort,
   ReasoningSummary,
-  SystemPromptMode,
   TextVerbosity,
 } from "../client/types.js"
 import { extractTextDelta, isTerminalEvent } from "../client/sse.js"
 import {
-  buildExtraInstructions,
+  buildInstructions,
   ensureToolCallIds,
-  extractSystemTexts,
   findEarliestStopIndex,
   toInputItems,
   truncateAtStop,
@@ -116,7 +114,7 @@ interface RequestState {
   reasoningSummary?: ReasoningSummary
   textVerbosity?: TextVerbosity
   include?: CodexInclude[]
-  extraInstructions?: string
+  instructions: string
 }
 
 function structuredOutputFunctionName(
@@ -175,8 +173,6 @@ export class ChatCodexOAuth extends BaseChatModel<
 
   authPath?: string
 
-  systemPromptMode: SystemPromptMode
-
   readonly client: CodexClient
 
   constructor(fields: ChatCodexOAuthParams = {}) {
@@ -196,7 +192,6 @@ export class ChatCodexOAuth extends BaseChatModel<
       getEnvironmentVariable(BASE_URL_ENV) ??
       "https://chatgpt.com/backend-api"
     this.authPath = fields.authPath
-    this.systemPromptMode = fields.systemPromptMode ?? "strict"
     this.client = new CodexClient({
       authStore: new AuthStore(fields.authPath),
       baseURL: this.baseURL,
@@ -391,9 +386,6 @@ export class ChatCodexOAuth extends BaseChatModel<
     messages: BaseMessage[],
     options: this["ParsedCallOptions"],
   ): RequestState {
-    const strictTexts =
-      this.systemPromptMode === "strict" ? extractSystemTexts(messages) : []
-
     return {
       tools: options.tools?.length ? convertTools(options.tools) : undefined,
       toolChoice: normalizeToolChoice(options.tool_choice),
@@ -403,10 +395,7 @@ export class ChatCodexOAuth extends BaseChatModel<
       reasoningSummary: options.reasoningSummary ?? this.reasoningSummary,
       textVerbosity: options.textVerbosity ?? this.textVerbosity,
       include: options.include ?? this.include,
-      extraInstructions:
-        this.systemPromptMode === "strict"
-          ? buildExtraInstructions(strictTexts)
-          : undefined,
+      instructions: buildInstructions(messages),
     }
   }
 
@@ -416,7 +405,7 @@ export class ChatCodexOAuth extends BaseChatModel<
     signal?: AbortSignal,
   ): CodexRequestParams {
     return {
-      inputItems: toInputItems(messages, this.systemPromptMode),
+      inputItems: toInputItems(messages),
       model: this.model,
       tools: state.tools,
       toolChoice: state.toolChoice,
@@ -426,7 +415,7 @@ export class ChatCodexOAuth extends BaseChatModel<
       reasoningSummary: state.reasoningSummary,
       textVerbosity: state.textVerbosity,
       include: state.include,
-      extraInstructions: state.extraInstructions,
+      instructions: state.instructions,
       signal,
     }
   }

@@ -7,7 +7,6 @@ export type {
   CodexInclude,
   ReasoningEffort,
   ReasoningSummary,
-  SystemPromptMode,
   TextVerbosity,
 } from "./chat_models/types.js"
 export {

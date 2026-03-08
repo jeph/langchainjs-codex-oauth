@@ -14,7 +14,6 @@ export type {
   CodexToolReference,
   ReasoningEffort,
   ReasoningSummary,
-  SystemPromptMode,
   TextVerbosity,
 } from "../client/types.js"
 import type {
@@ -22,7 +21,6 @@ import type {
   CodexInclude,
   ReasoningEffort,
   ReasoningSummary,
-  SystemPromptMode,
   TextVerbosity,
 } from "../client/types.js"
 
@@ -51,7 +49,6 @@ export interface ChatCodexOAuthParams
   timeout?: number
   maxRetries?: number
   authPath?: string
-  systemPromptMode?: SystemPromptMode
 }
 
 export interface ChatCodexOAuthCallOptions

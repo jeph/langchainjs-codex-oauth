@@ -27,11 +27,8 @@ describe("ChatCodexOAuth", () => {
     expect(result.content).toBe("hello ")
   })
 
-  test("passes strict system prompts as extra instructions", async () => {
-    const model = new ChatCodexOAuth({
-      model: "gpt-5.2-codex",
-      systemPromptMode: "strict",
-    })
+  test("passes system prompts as top-level instructions", async () => {
+    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
     let captured: Record<string, unknown> | undefined
 
     vi.spyOn(model.client, "completeWithResponse").mockImplementation(
@@ -53,13 +50,34 @@ describe("ChatCodexOAuth", () => {
       new HumanMessage("hi"),
     ])
 
-    expect(captured?.extraInstructions).toEqual(
-      expect.stringContaining("router"),
-    )
+    expect(captured?.instructions).toBe("You are a router.")
     const inputItems = captured?.inputItems as
       | Array<Record<string, unknown>>
       | undefined
-    expect(inputItems?.[0]?.role).toBe("developer")
+    expect(inputItems?.[0]?.role).toBe("user")
+  })
+
+  test("sends empty instructions when no system prompt is present", async () => {
+    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+    let captured: Record<string, unknown> | undefined
+
+    vi.spyOn(model.client, "completeWithResponse").mockImplementation(
+      async (input) => {
+        captured = input as unknown as Record<string, unknown>
+        return {
+          parsed: {
+            content: "ok",
+            toolCalls: [],
+            invalidToolCalls: [],
+          },
+          response: { output: [], status: "completed" },
+        }
+      },
+    )
+
+    await model.invoke([new HumanMessage("hi")])
+
+    expect(captured?.instructions).toBe("")
   })
 
   test("passes per-call request overrides on invoke", async () => {

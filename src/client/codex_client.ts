@@ -9,7 +9,6 @@ import {
 import { CodexAPIError, NotAuthenticatedError } from "../errors.js"
 import { normalizeModel } from "../converters/messages.js"
 import { extractTextDelta, isTerminalEvent, iterSseEvents } from "./sse.js"
-import { getCodexInstructions } from "./instructions.js"
 import type {
   CodexInclude,
   CodexRequestParams,
@@ -156,6 +155,7 @@ export class CodexClient {
       stream: true,
       input: params.inputItems,
       include: params.include ?? DEFAULT_INCLUDE,
+      instructions: params.instructions ?? "",
     }
 
     if (params.tools) {
@@ -246,16 +246,7 @@ export class CodexClient {
     const url = `${this.baseURL}${CODEX_RESPONSES_PATH}`
     const creds = await this.loadValidCredentials()
     const body = this.buildRequestBody(params)
-    const baseInstructions = await getCodexInstructions(
-      String(body.model),
-      this.fetchFn,
-    )
 
-    body.instructions = params.extraInstructions
-      ? `${baseInstructions}\n\n${params.extraInstructions}`.trim()
-      : baseInstructions
-
-    let removedExtraInstructions = false
     let removedToolChoice = false
     let removedTemperature = false
     let removedMaxOutputTokens = false
@@ -291,17 +282,6 @@ export class CodexClient {
       if (!response.ok) {
         const error = await CodexClient.toApiError(response)
         const haystack = error.message.toLowerCase()
-
-        if (
-          !removedExtraInstructions &&
-          params.extraInstructions &&
-          error.statusCode === 400 &&
-          haystack.includes("instruction")
-        ) {
-          body.instructions = baseInstructions
-          removedExtraInstructions = true
-          continue
-        }
 
         if (
           !removedToolChoice &&

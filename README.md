@@ -220,7 +220,6 @@ Constructor options:
 - `maxRetries`
 - `baseURL`
 - `authPath`
-- `systemPromptMode`: `strict` (default), `default`, or `disabled`
 
 Environment variables:
 
@@ -231,20 +230,10 @@ Environment variables:
 - `LANGCHAINJS_CODEX_OAUTH_MAX_RETRIES`
 - `LANGCHAINJS_CODEX_OAUTH_HOME`
 - `LANGCHAINJS_CODEX_OAUTH_AUTH_PATH`
-- `LANGCHAINJS_CODEX_OAUTH_INSTRUCTIONS_MODE`
 
-`systemPromptMode` controls how system and developer messages are passed through:
+`SystemMessage` and LangChain `developer` chat messages are sent as the top-level backend `instructions` string, in order, joined with blank lines. Regular human, assistant, and tool messages are sent as normal conversation input items.
 
-- `strict`: treats system prompts as highest priority and mirrors them into extra instructions
-- `default`: forwards system and developer messages as normal developer content
-- `disabled`: drops system and developer messages entirely
-
-`LANGCHAINJS_CODEX_OAUTH_INSTRUCTIONS_MODE` accepts `auto`, `cache`, `github`, or `bundled`.
-
-- `auto`: use cached Codex instructions when present, otherwise fall back to GitHub or the bundled fallback
-- `cache`: require a cached instruction file
-- `github`: always fetch the latest instruction file from the `openai/codex` release
-- `bundled`: use the built-in fallback prompt
+When no system or developer prompt is present, the client sends an empty `instructions` string because the backend currently rejects requests that omit the field entirely.
 
 ## Examples
 

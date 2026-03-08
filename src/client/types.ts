@@ -2,10 +2,6 @@ import type { UsageMetadata } from "@langchain/core/messages"
 
 export type MessageRole = "developer" | "user" | "assistant"
 
-export type SystemPromptMode = "strict" | "default" | "disabled"
-
-export type InstructionsMode = "auto" | "cache" | "github" | "bundled"
-
 type OpenString = string & Record<never, never>
 
 export type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh"
@@ -136,7 +132,7 @@ export interface CodexRequestParams {
   reasoningSummary?: ReasoningSummary
   textVerbosity?: TextVerbosity
   include?: CodexInclude[]
-  extraInstructions?: string
+  instructions?: string
   signal?: AbortSignal
 }
 

@@ -18,11 +18,9 @@ export type {
   CodexToolCall,
   CodexToolChoice,
   CompletionResult,
-  InstructionsMode,
   ParsedAssistantMessage,
   ParsedMetadata,
   ReasoningEffort,
   ReasoningSummary,
-  SystemPromptMode,
   TextVerbosity,
 } from "./types.js"

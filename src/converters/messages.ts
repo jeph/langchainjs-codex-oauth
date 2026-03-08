@@ -15,7 +15,6 @@ import type {
   InputMessageItem,
   MessageRole,
   MessageTextBlock,
-  SystemPromptMode,
 } from "../client/types.js"
 import { isRecord } from "../utils/json.js"
 
@@ -27,13 +26,8 @@ function isSystemStyleMessage(message: BaseMessage): boolean {
   return message.getType() === "system" || isDeveloperMessage(message)
 }
 
-function queuedMessages(
-  messages: BaseMessage[],
-  mode: SystemPromptMode,
-): BaseMessage[] {
-  return mode === "default"
-    ? messages
-    : messages.filter((message) => !isSystemStyleMessage(message))
+function queuedMessages(messages: BaseMessage[]): BaseMessage[] {
+  return messages.filter((message) => !isSystemStyleMessage(message))
 }
 
 function toolCallId(toolCall: { id?: string }): string {
@@ -193,44 +187,12 @@ export function extractSystemTexts(messages: BaseMessage[]): string[] {
   })
 }
 
-export function formatSystemPromptStrict(texts: string[]): string {
-  return `System instructions (highest priority):\n${texts.join("\n\n")}`.trim()
+export function buildInstructions(messages: BaseMessage[]): string {
+  return extractSystemTexts(messages).join("\n\n")
 }
 
-export function buildExtraInstructions(texts: string[]): string | undefined {
-  const joined = texts.join("\n\n").trim()
-
-  if (!joined) {
-    return undefined
-  }
-
-  const truncated =
-    joined.length > 4_000 ? `${joined.slice(0, 4_000).trimEnd()}...` : joined
-
-  return [
-    "### Conversation system prompt",
-    "Treat the following system instructions as highest priority.",
-    "",
-    truncated,
-    "",
-    "### End conversation system prompt",
-  ].join("\n")
-}
-
-export function toInputItems(
-  messages: BaseMessage[],
-  mode: SystemPromptMode,
-): CodexInputItem[] {
-  const strictTexts = mode === "strict" ? extractSystemTexts(messages) : []
-  const strictPrelude =
-    strictTexts.length > 0
-      ? [messageItem("developer", formatSystemPromptStrict(strictTexts))]
-      : []
-
-  return [
-    ...strictPrelude,
-    ...queuedMessages(messages, mode).flatMap(messageToInputItems),
-  ]
+export function toInputItems(messages: BaseMessage[]): CodexInputItem[] {
+  return queuedMessages(messages).flatMap(messageToInputItems)
 }
 
 export function findEarliestStopIndex(
