@@ -35,19 +35,15 @@ import type { ZodType } from "zod"
 import { AuthStore } from "../auth/store.js"
 import { CodexClient } from "../client/codex_client.js"
 import type {
-  CodexBackendTool,
   CodexInclude,
-  CodexRequestParams,
   ReasoningEffort,
   ReasoningSummary,
   TextVerbosity,
 } from "../client/types.js"
 import { extractTextDelta, isTerminalEvent } from "../client/sse.js"
 import {
-  buildInstructions,
   ensureToolCallIds,
   findEarliestStopIndex,
-  toInputItems,
   truncateAtStop,
 } from "../converters/messages.js"
 import {
@@ -57,65 +53,22 @@ import {
   extractUsageMetadata,
   parseAssistantMessage,
 } from "../converters/responses.js"
-import { convertTools, normalizeToolChoice } from "../converters/tools.js"
+import { normalizeToolChoice } from "../converters/tools.js"
 import { VERSION } from "../version.js"
-import { getEnvironmentVariable } from "../utils/env.js"
+import { throwIfAborted } from "../utils/abort.js"
+import {
+  resolveChatCodexOAuthConfig,
+  type ResolvedChatCodexOAuthConfig,
+} from "./config.js"
+import {
+  buildClientRequest,
+  buildInvocationParams,
+  buildRequestState,
+} from "./request.js"
 import type {
   ChatCodexOAuthCallOptions,
   ChatCodexOAuthParams,
 } from "./types.js"
-
-const BASE_URL_ENV = "LANGCHAINJS_CODEX_OAUTH_BASE_URL"
-const TEMPERATURE_ENV = "LANGCHAINJS_CODEX_OAUTH_TEMPERATURE"
-const MAX_TOKENS_ENV = "LANGCHAINJS_CODEX_OAUTH_MAX_TOKENS"
-const TIMEOUT_ENV = "LANGCHAINJS_CODEX_OAUTH_TIMEOUT_S"
-const MAX_RETRIES_ENV = "LANGCHAINJS_CODEX_OAUTH_MAX_RETRIES"
-
-function parseIntegerEnv(name: string): number | undefined {
-  const raw = getEnvironmentVariable(name)
-
-  if (!raw) {
-    return undefined
-  }
-
-  const value = Number.parseInt(raw, 10)
-  return Number.isInteger(value) ? value : undefined
-}
-
-function parseFloatEnv(name: string): number | undefined {
-  const raw = getEnvironmentVariable(name)
-
-  if (!raw) {
-    return undefined
-  }
-
-  const value = Number.parseFloat(raw)
-  return Number.isFinite(value) ? value : undefined
-}
-
-function throwIfAborted(signal?: AbortSignal): void {
-  if (!signal?.aborted) {
-    return
-  }
-
-  if (signal.reason instanceof Error) {
-    throw signal.reason
-  }
-
-  throw new Error("Request aborted.")
-}
-
-interface RequestState {
-  tools?: CodexBackendTool[]
-  toolChoice?: CodexRequestParams["toolChoice"]
-  temperature?: number
-  maxOutputTokens?: number
-  reasoningEffort?: ReasoningEffort
-  reasoningSummary?: ReasoningSummary
-  textVerbosity?: TextVerbosity
-  include?: CodexInclude[]
-  instructions: string
-}
 
 function structuredOutputFunctionName(
   schema:
@@ -175,23 +128,23 @@ export class ChatCodexOAuth extends BaseChatModel<
 
   readonly client: CodexClient
 
+  private readonly config: ResolvedChatCodexOAuthConfig
+
   constructor(fields: ChatCodexOAuthParams = {}) {
     super(fields)
+    this.config = resolveChatCodexOAuthConfig(fields)
     this._addVersion("langchainjs-codex-oauth", VERSION)
-    this.model = fields.model ?? "gpt-5.2-codex"
-    this.temperature = fields.temperature ?? parseFloatEnv(TEMPERATURE_ENV)
-    this.maxTokens = fields.maxTokens ?? parseIntegerEnv(MAX_TOKENS_ENV)
-    this.reasoningEffort = fields.reasoningEffort ?? "medium"
-    this.reasoningSummary = fields.reasoningSummary
-    this.textVerbosity = fields.textVerbosity ?? "medium"
-    this.include = fields.include ?? ["reasoning.encrypted_content"]
-    this.timeout = fields.timeout ?? (parseFloatEnv(TIMEOUT_ENV) ?? 60) * 1000
-    this.maxRetries = fields.maxRetries ?? parseIntegerEnv(MAX_RETRIES_ENV) ?? 2
-    this.baseURL =
-      fields.baseURL ??
-      getEnvironmentVariable(BASE_URL_ENV) ??
-      "https://chatgpt.com/backend-api"
-    this.authPath = fields.authPath
+    this.model = this.config.model
+    this.temperature = this.config.temperature
+    this.maxTokens = this.config.maxTokens
+    this.reasoningEffort = this.config.reasoningEffort
+    this.reasoningSummary = this.config.reasoningSummary
+    this.textVerbosity = this.config.textVerbosity
+    this.include = this.config.include
+    this.timeout = this.config.timeout
+    this.maxRetries = this.config.maxRetries
+    this.baseURL = this.config.baseURL
+    this.authPath = this.config.authPath
     this.client = new CodexClient({
       authStore: new AuthStore(fields.authPath),
       baseURL: this.baseURL,
@@ -239,25 +192,7 @@ export class ChatCodexOAuth extends BaseChatModel<
   override invocationParams(
     options?: this["ParsedCallOptions"],
   ): Record<string, unknown> {
-    return {
-      model: this.model,
-      temperature: options?.temperature ?? this.temperature,
-      max_output_tokens: options?.maxTokens ?? this.maxTokens,
-      tool_choice: normalizeToolChoice(options?.tool_choice),
-      reasoning: {
-        ...((options?.reasoningEffort ?? this.reasoningEffort)
-          ? { effort: options?.reasoningEffort ?? this.reasoningEffort }
-          : {}),
-        ...((options?.reasoningSummary ?? this.reasoningSummary)
-          ? { summary: options?.reasoningSummary ?? this.reasoningSummary }
-          : {}),
-      },
-      text:
-        (options?.textVerbosity ?? this.textVerbosity)
-          ? { verbosity: options?.textVerbosity ?? this.textVerbosity }
-          : undefined,
-      include: options?.include ?? this.include,
-    }
+    return buildInvocationParams(this.config, options)
   }
 
   override bindTools(
@@ -382,44 +317,6 @@ export class ChatCodexOAuth extends BaseChatModel<
         >
   }
 
-  private buildRequestState(
-    messages: BaseMessage[],
-    options: this["ParsedCallOptions"],
-  ): RequestState {
-    return {
-      tools: options.tools?.length ? convertTools(options.tools) : undefined,
-      toolChoice: normalizeToolChoice(options.tool_choice),
-      temperature: options.temperature ?? this.temperature,
-      maxOutputTokens: options.maxTokens ?? this.maxTokens,
-      reasoningEffort: options.reasoningEffort ?? this.reasoningEffort,
-      reasoningSummary: options.reasoningSummary ?? this.reasoningSummary,
-      textVerbosity: options.textVerbosity ?? this.textVerbosity,
-      include: options.include ?? this.include,
-      instructions: buildInstructions(messages),
-    }
-  }
-
-  private buildClientRequest(
-    messages: BaseMessage[],
-    state: RequestState,
-    signal?: AbortSignal,
-  ): CodexRequestParams {
-    return {
-      inputItems: toInputItems(messages),
-      model: this.model,
-      tools: state.tools,
-      toolChoice: state.toolChoice,
-      temperature: state.temperature,
-      maxOutputTokens: state.maxOutputTokens,
-      reasoningEffort: state.reasoningEffort,
-      reasoningSummary: state.reasoningSummary,
-      textVerbosity: state.textVerbosity,
-      include: state.include,
-      instructions: state.instructions,
-      signal,
-    }
-  }
-
   private async *emitTextChunk(
     text: string,
     runManager?: CallbackManagerForLLMRun,
@@ -452,9 +349,9 @@ export class ChatCodexOAuth extends BaseChatModel<
     _runManager?: CallbackManagerForLLMRun,
   ): Promise<ChatResult> {
     throwIfAborted(options.signal)
-    const state = this.buildRequestState(messages, options)
+    const state = buildRequestState(messages, this.config, options)
     const result = await this.client.completeWithResponse(
-      this.buildClientRequest(messages, state, options.signal),
+      buildClientRequest(messages, this.model, state, options.signal),
     )
 
     const responseMetadata = extractResponseMetadata(result.response)
@@ -494,8 +391,13 @@ export class ChatCodexOAuth extends BaseChatModel<
     runManager?: CallbackManagerForLLMRun,
   ): AsyncGenerator<ChatGenerationChunk> {
     throwIfAborted(options.signal)
-    const state = this.buildRequestState(messages, options)
-    const request = this.buildClientRequest(messages, state, options.signal)
+    const state = buildRequestState(messages, this.config, options)
+    const request = buildClientRequest(
+      messages,
+      this.model,
+      state,
+      options.signal,
+    )
     const stop = (options.stop ?? []).filter(
       (item): item is string => typeof item === "string" && item.length > 0,
     )
