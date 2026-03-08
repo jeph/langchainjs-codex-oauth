@@ -38,10 +38,13 @@ const invalidReasoningEffort: ReasoningEffort = "ultra"
 // @ts-expect-error invalid text verbosity should be rejected
 const invalidTextVerbosity: TextVerbosity = "xhigh"
 
+// @ts-expect-error invalid reasoning summary should be rejected
+const invalidReasoningSummary: ReasoningSummary = "brief"
+
 describe("package surface", () => {
   test("exposes typed root, auth, and client barrels", () => {
     const reasoningEffort: ReasoningEffort = "medium"
-    const reasoningSummary: ReasoningSummary = "brief"
+    const reasoningSummary: ReasoningSummary = "concise"
     const textVerbosity: TextVerbosity = "high"
     const include: CodexInclude = "reasoning.encrypted_content"
     const toolRef: CodexToolReference = {
@@ -139,5 +142,6 @@ describe("package surface", () => {
     expect(completion.parsed.content).toBe("ok")
     expect(REDIRECT_URI).toContain("localhost")
     expect(validReasoningEffort).toBe("xhigh")
+    expect(invalidReasoningSummary).toBe("brief")
   })
 })
