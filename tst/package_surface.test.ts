@@ -25,6 +25,12 @@ import {
   type CompletionResult,
 } from "../src/client/index.js"
 
+// @ts-expect-error invalid reasoning effort should be rejected
+const invalidReasoningEffort: ReasoningEffort = "xhigh"
+
+// @ts-expect-error invalid text verbosity should be rejected
+const invalidTextVerbosity: TextVerbosity = "xhigh"
+
 describe("package surface", () => {
   test("exposes typed root, auth, and client barrels", () => {
     const reasoningEffort: ReasoningEffort = "medium"

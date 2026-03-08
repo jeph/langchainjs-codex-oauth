@@ -8,11 +8,11 @@ export type InstructionsMode = "auto" | "cache" | "github" | "bundled"
 
 type OpenString = string & Record<never, never>
 
-export type ReasoningEffort = "low" | "medium" | "high" | OpenString
+export type ReasoningEffort = "low" | "medium" | "high"
 
 export type ReasoningSummary = "brief" | OpenString
 
-export type TextVerbosity = "low" | "medium" | "high" | OpenString
+export type TextVerbosity = "low" | "medium" | "high"
 
 export type CodexInclude = "reasoning.encrypted_content" | OpenString
 
