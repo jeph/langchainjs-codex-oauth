@@ -31,6 +31,42 @@ describe("AuthStore", () => {
     await expect(readFile(authPath, "utf8")).resolves.toContain("acct_123")
   })
 
+  test("overwrites previously saved credentials", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "codex-auth-store-"))
+    const authPath = path.join(dir, "auth.json")
+    const store = new AuthStore(authPath)
+
+    await store.save({
+      type: "oauth",
+      access: "access-first",
+      refresh: "refresh-first",
+      expires: 123,
+      accountId: "acct_first",
+    })
+
+    await store.save({
+      type: "oauth",
+      access: "access-second",
+      refresh: "refresh-second",
+      expires: 456,
+      accountId: "acct_second",
+    })
+
+    await expect(store.load()).resolves.toEqual({
+      type: "oauth",
+      access: "access-second",
+      refresh: "refresh-second",
+      expires: 456,
+      accountId: "acct_second",
+    })
+
+    const raw = await readFile(authPath, "utf8")
+
+    expect(raw).toContain("acct_second")
+    expect(raw).not.toContain("acct_first")
+    expect(raw).not.toContain("access-first")
+  })
+
   test("throws when credentials are missing", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "codex-auth-store-"))
     const store = new AuthStore(path.join(dir, "missing.json"))
