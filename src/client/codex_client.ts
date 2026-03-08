@@ -1,13 +1,15 @@
 import { setTimeout as sleep } from "node:timers/promises"
 
 import { AuthStore, type OAuthCredentials } from "../auth/store.js"
-import {
-  decodeJwtPayload,
-  extractChatGPTAccountId,
-  refreshAccessToken,
-} from "../auth/oauth.js"
+import { credentialsFromTokenResponse } from "../auth/credentials.js"
+import { refreshAccessToken } from "../auth/oauth.js"
 import { CodexAPIError, NotAuthenticatedError } from "../errors.js"
 import { normalizeModel } from "../converters/messages.js"
+import {
+  applyCompatibilityFallback,
+  createCompatibilityFallbackState,
+  type CodexRequestBody,
+} from "./compatibility.js"
 import { extractTextDelta, isTerminalEvent, iterSseEvents } from "./sse.js"
 import type {
   CodexInclude,
@@ -16,6 +18,7 @@ import type {
 } from "./types.js"
 import { parseAssistantMessage } from "../converters/responses.js"
 import { asString, isRecord, parseJsonObject } from "../utils/json.js"
+import { throwIfAborted } from "../utils/abort.js"
 
 export const CODEX_BASE_URL = "https://chatgpt.com/backend-api"
 export const CODEX_RESPONSES_PATH = "/codex/responses"
@@ -65,18 +68,6 @@ function isRetryableNetworkError(
   )
 }
 
-function throwIfAborted(signal?: AbortSignal): void {
-  if (!signal?.aborted) {
-    return
-  }
-
-  if (signal.reason instanceof Error) {
-    throw signal.reason
-  }
-
-  throw new Error("Request aborted.")
-}
-
 export class CodexClient {
   readonly authStore: AuthStore
 
@@ -107,29 +98,14 @@ export class CodexClient {
       refreshToken: creds.refresh,
       fetchFn: this.fetchFn,
     })
-    const payload = decodeJwtPayload(refreshed.access)
-
-    if (!payload) {
-      throw new NotAuthenticatedError(
+    const next: OAuthCredentials = credentialsFromTokenResponse({
+      token: refreshed,
+      errorType: NotAuthenticatedError,
+      invalidTokenMessage:
         "Token refresh succeeded but the access token was invalid. Re-run `npx langchainjs-codex-oauth auth login`.",
-      )
-    }
-
-    const accountId = extractChatGPTAccountId(payload)
-
-    if (!accountId) {
-      throw new NotAuthenticatedError(
+      missingAccountIdMessage:
         "Failed to derive chatgpt_account_id from the refreshed token. Re-run `npx langchainjs-codex-oauth auth login`.",
-      )
-    }
-
-    const next: OAuthCredentials = {
-      type: "oauth",
-      access: refreshed.access,
-      refresh: refreshed.refresh,
-      expires: refreshed.expiresAtMs,
-      accountId,
-    }
+    })
 
     await this.authStore.save(next)
     return next
@@ -146,10 +122,8 @@ export class CodexClient {
     })
   }
 
-  private buildRequestBody(
-    params: CodexRequestParams,
-  ): Record<string, unknown> {
-    const body: Record<string, unknown> = {
+  private buildRequestBody(params: CodexRequestParams): CodexRequestBody {
+    const body: CodexRequestBody = {
       model: normalizeModel(params.model),
       store: false,
       stream: true,
@@ -245,11 +219,8 @@ export class CodexClient {
 
     const url = `${this.baseURL}${CODEX_RESPONSES_PATH}`
     const creds = await this.loadValidCredentials()
-    const body = this.buildRequestBody(params)
-
-    let removedToolChoice = false
-    let removedTemperature = false
-    let removedMaxOutputTokens = false
+    let body = this.buildRequestBody(params)
+    let compatibilityState = createCompatibilityFallbackState()
     let attempt = 0
 
     while (true) {
@@ -281,39 +252,16 @@ export class CodexClient {
 
       if (!response.ok) {
         const error = await CodexClient.toApiError(response)
-        const haystack = error.message.toLowerCase()
+        const fallback = applyCompatibilityFallback({
+          body,
+          error,
+          params,
+          state: compatibilityState,
+        })
 
-        if (
-          !removedToolChoice &&
-          params.toolChoice !== undefined &&
-          error.statusCode === 400 &&
-          haystack.includes("tool_choice")
-        ) {
-          delete body.tool_choice
-          removedToolChoice = true
-          continue
-        }
-
-        if (
-          !removedTemperature &&
-          params.temperature !== undefined &&
-          error.statusCode === 400 &&
-          haystack.includes("temperature")
-        ) {
-          delete body.temperature
-          removedTemperature = true
-          continue
-        }
-
-        if (
-          !removedMaxOutputTokens &&
-          params.maxOutputTokens !== undefined &&
-          error.statusCode === 400 &&
-          (haystack.includes("max_output_tokens") ||
-            haystack.includes("max_tokens"))
-        ) {
-          delete body.max_output_tokens
-          removedMaxOutputTokens = true
+        if (fallback) {
+          body = fallback.body
+          compatibilityState = fallback.state
           continue
         }
 

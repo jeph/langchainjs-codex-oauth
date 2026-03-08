@@ -1,13 +1,12 @@
 import { createInterface } from "node:readline/promises"
 import { stdin, stdout } from "node:process"
 
+import { credentialsFromTokenResponse } from "./auth/credentials.js"
 import { AuthStore } from "./auth/store.js"
 import {
   buildAuthorizeUrl,
   createState,
-  decodeJwtPayload,
   exchangeAuthorizationCode,
-  extractChatGPTAccountId,
   generatePkce,
   openInBrowser,
   parseAuthorizationInput,
@@ -188,25 +187,15 @@ async function login(manual: boolean, timeoutMs: number): Promise<number> {
     : await authorizeInBrowser(session, timeoutMs)
 
   const token = await exchangeAuthorizationCode(authorization)
-  const payload = decodeJwtPayload(token.access)
-
-  if (!payload) {
-    throw new OAuthFlowError("Received an invalid access token.")
-  }
-
-  const accountId = extractChatGPTAccountId(payload)
-
-  if (!accountId) {
-    throw new OAuthFlowError("Failed to extract chatgpt_account_id from token.")
-  }
-
-  await store.save({
-    type: "oauth",
-    access: token.access,
-    refresh: token.refresh,
-    expires: token.expiresAtMs,
-    accountId,
-  })
+  await store.save(
+    credentialsFromTokenResponse({
+      token,
+      errorType: OAuthFlowError,
+      invalidTokenMessage: "Received an invalid access token.",
+      missingAccountIdMessage:
+        "Failed to extract chatgpt_account_id from token.",
+    }),
+  )
 
   stdout.write("Login successful. Credentials saved.\n")
   return 0
