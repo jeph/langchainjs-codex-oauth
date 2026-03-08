@@ -212,7 +212,7 @@ Constructor options:
 - `model`: model name to request, default `gpt-5.2-codex`
 - `temperature`
 - `maxTokens`
-- `reasoningEffort`: `"low"`, `"medium"` (default), or `"high"`
+- `reasoningEffort`: `"none"`, `"low"`, `"medium"` (default), `"high"`, or `"xhigh"`
 - `reasoningSummary`: `"brief"` or another provider-supported string
 - `textVerbosity`: `"low"`, `"medium"` (default), or `"high"`
 - `include`: for example `["reasoning.encrypted_content"]`

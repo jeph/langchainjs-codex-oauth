@@ -8,7 +8,7 @@ export type InstructionsMode = "auto" | "cache" | "github" | "bundled"
 
 type OpenString = string & Record<never, never>
 
-export type ReasoningEffort = "low" | "medium" | "high"
+export type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh"
 
 export type ReasoningSummary = "brief" | OpenString
 

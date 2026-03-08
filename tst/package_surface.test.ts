@@ -25,8 +25,10 @@ import {
   type CompletionResult,
 } from "../src/client/index.js"
 
+const validReasoningEffort: ReasoningEffort = "xhigh"
+
 // @ts-expect-error invalid reasoning effort should be rejected
-const invalidReasoningEffort: ReasoningEffort = "xhigh"
+const invalidReasoningEffort: ReasoningEffort = "ultra"
 
 // @ts-expect-error invalid text verbosity should be rejected
 const invalidTextVerbosity: TextVerbosity = "xhigh"
@@ -106,5 +108,6 @@ describe("package surface", () => {
     expect(request.include).toEqual(["reasoning.encrypted_content"])
     expect(completion.parsed.content).toBe("ok")
     expect(REDIRECT_URI).toContain("localhost")
+    expect(validReasoningEffort).toBe("xhigh")
   })
 })
