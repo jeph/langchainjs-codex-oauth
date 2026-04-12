@@ -15,6 +15,10 @@ function includeForMode(mode: string): string[] {
     return ["tst/**/*.extended.int.test.ts"]
   }
 
+  if (mode === "e2e") {
+    return ["tst/**/*.e2e.test.ts"]
+  }
+
   return ["tst/**/*.test.ts"]
 }
 
@@ -27,7 +31,15 @@ function excludeForMode(mode: string): string[] {
     return configDefaults.exclude
   }
 
-  return ["tst/**/*.int.test.ts", ...configDefaults.exclude]
+  if (mode === "e2e") {
+    return configDefaults.exclude
+  }
+
+  return [
+    "tst/**/*.int.test.ts",
+    "tst/**/*.e2e.test.ts",
+    ...configDefaults.exclude,
+  ]
 }
 
 export default defineConfig((env) => ({
@@ -44,7 +56,9 @@ export default defineConfig((env) => ({
         ? 300_000
         : env.mode === "int"
           ? 120_000
-          : 30_000,
+          : env.mode === "e2e"
+            ? 120_000
+            : 30_000,
     typecheck: {
       enabled: true,
     },
