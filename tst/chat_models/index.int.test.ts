@@ -91,6 +91,23 @@ describe.skipIf(!hasAuth)("ChatCodexOAuth live integration", () => {
     expect(parts.join("").length).toBeGreaterThan(0)
   })
 
+  test("returns the same exact marker via invoke and stream", async () => {
+    const marker = "LCJS_REGRESSION_OK"
+    const prompt = `Reply with exactly ${marker} and nothing else.`
+    const model = createModel({ maxTokens: 40 })
+    const streamedParts: string[] = []
+    const invoked = await model.invoke([new HumanMessage(prompt)])
+
+    for await (const chunk of await model.stream([new HumanMessage(prompt)])) {
+      if (typeof chunk.content === "string" && chunk.content.length > 0) {
+        streamedParts.push(chunk.content)
+      }
+    }
+
+    expect(textOf(invoked.content).trim()).toBe(marker)
+    expect(streamedParts.join("").trim()).toBe(marker)
+  })
+
   test("batches invocations through LangChain", async () => {
     const model = createModel({ maxTokens: 40 })
 

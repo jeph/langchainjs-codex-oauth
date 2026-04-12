@@ -13,8 +13,13 @@ import type {
   CodexInclude,
   CodexRequestParams,
   CompletionResult,
+  ParsedAssistantMessage,
 } from "./types.js"
-import { parseAssistantMessage } from "../converters/responses.js"
+import {
+  extractToolCallArgsDelta,
+  extractToolCallItemAdded,
+  parseAssistantMessage,
+} from "../converters/responses.js"
 import { asString, isRecord, parseJsonObject } from "../utils/json.js"
 
 export const CODEX_BASE_URL = "https://chatgpt.com/backend-api"
@@ -99,6 +104,63 @@ const INITIAL_RETRY_STATE: RequestRetryState = {
   includeToolChoice: true,
   includeTemperature: true,
   includeMaxOutputTokens: true,
+}
+
+interface StreamedToolCallState {
+  name?: string
+  args: string
+  outputIndex?: number
+}
+
+function parseStreamedAssistantMessage(
+  text: string,
+  toolCalls: ReadonlyMap<string, StreamedToolCallState>,
+): ParsedAssistantMessage {
+  const sortedToolCalls = [...toolCalls.entries()].sort(
+    ([, left], [, right]) =>
+      (left.outputIndex ?? Number.MAX_SAFE_INTEGER) -
+      (right.outputIndex ?? Number.MAX_SAFE_INTEGER),
+  )
+  const parsed = sortedToolCalls.map(([id, toolCall]) => {
+    if (!toolCall.name) {
+      return {}
+    }
+
+    try {
+      const args: unknown = JSON.parse(toolCall.args)
+
+      if (!isRecord(args)) {
+        throw new Error("arguments must be a JSON object")
+      }
+
+      return {
+        toolCall: {
+          type: "tool_call" as const,
+          id,
+          name: toolCall.name,
+          args,
+        },
+      }
+    } catch (error) {
+      return {
+        invalidToolCall: {
+          type: "invalid_tool_call" as const,
+          id,
+          name: toolCall.name,
+          args: toolCall.args,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      }
+    }
+  })
+
+  return {
+    content: text,
+    toolCalls: parsed.flatMap(({ toolCall }) => (toolCall ? [toolCall] : [])),
+    invalidToolCalls: parsed.flatMap(({ invalidToolCall }) =>
+      invalidToolCall ? [invalidToolCall] : [],
+    ),
+  }
 }
 
 export class CodexClient {
@@ -390,18 +452,6 @@ export class CodexClient {
     }
   }
 
-  private async terminalResponse(
-    params: CodexRequestParams,
-  ): Promise<Record<string, unknown> | null> {
-    for await (const event of this.streamEvents(params)) {
-      if (isTerminalEvent(event)) {
-        return isRecord(event.response) ? event.response : null
-      }
-    }
-
-    return null
-  }
-
   async *streamEvents(
     params: CodexRequestParams,
   ): AsyncGenerator<Record<string, unknown>> {
@@ -416,10 +466,87 @@ export class CodexClient {
   async completeWithResponse(
     params: CodexRequestParams,
   ): Promise<CompletionResult> {
-    const response = await this.terminalResponse(params)
+    let response: Record<string, unknown> | null = null
+    let streamedText = ""
+    const itemIds = new Map<string, string>()
+    const streamedToolCalls = new Map<string, StreamedToolCallState>()
+
+    for await (const event of this.streamEvents(params)) {
+      if (isTerminalEvent(event)) {
+        response = isRecord(event.response) ? event.response : null
+        break
+      }
+
+      const textDelta = extractTextDelta(event)
+
+      if (textDelta) {
+        streamedText += textDelta
+      }
+
+      const addedToolCall = extractToolCallItemAdded(event)
+
+      if (addedToolCall) {
+        if (addedToolCall.itemId) {
+          itemIds.set(addedToolCall.itemId, addedToolCall.callId)
+        }
+
+        const current = streamedToolCalls.get(addedToolCall.callId)
+        streamedToolCalls.set(addedToolCall.callId, {
+          name: addedToolCall.name ?? current?.name,
+          args: current?.args ?? "",
+          outputIndex: addedToolCall.outputIndex,
+        })
+        continue
+      }
+
+      const toolCallArgs = extractToolCallArgsDelta(event)
+
+      if (!toolCallArgs) {
+        continue
+      }
+
+      const callId =
+        toolCallArgs.callId ??
+        (toolCallArgs.itemId ? itemIds.get(toolCallArgs.itemId) : undefined)
+
+      if (!callId) {
+        continue
+      }
+
+      const current = streamedToolCalls.get(callId)
+      streamedToolCalls.set(callId, {
+        name: current?.name,
+        args: `${current?.args ?? ""}${toolCallArgs.delta}`,
+        outputIndex: current?.outputIndex ?? toolCallArgs.outputIndex,
+      })
+    }
+
+    const parsed = parseAssistantMessage(response)
+
+    if (!response) {
+      return {
+        parsed,
+        response,
+      }
+    }
+
+    const streamed = parseStreamedAssistantMessage(
+      streamedText,
+      streamedToolCalls,
+    )
 
     return {
-      parsed: parseAssistantMessage(response),
+      parsed: {
+        content: parsed.content === "" ? streamed.content : parsed.content,
+        toolCalls:
+          parsed.toolCalls.length === 0 && parsed.invalidToolCalls.length === 0
+            ? streamed.toolCalls
+            : parsed.toolCalls,
+        invalidToolCalls:
+          parsed.toolCalls.length === 0 && parsed.invalidToolCalls.length === 0
+            ? streamed.invalidToolCalls
+            : parsed.invalidToolCalls,
+      },
       response,
     }
   }

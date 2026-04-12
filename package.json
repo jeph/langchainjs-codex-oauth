@@ -39,6 +39,7 @@
     "test": "vitest run",
     "test:int": "vitest run --mode int",
     "test:int:extended": "vitest run --mode int-extended",
+    "test:e2e": "pnpm run build:dist && vitest run --mode e2e",
     "test:watch": "vitest",
     "format": "prettier --write \"src/**/*.ts\" \"tst/**/*.ts\" \"examples/**/*.ts\" \"*.{json,md,ts,mjs}\" \"bin/*.js\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"tst/**/*.ts\" \"examples/**/*.ts\" \"*.{json,md,ts,mjs}\" \"bin/*.js\"",

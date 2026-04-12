@@ -118,6 +118,68 @@ describe("ChatCodexOAuth", () => {
     })
   })
 
+  test("recovers streamed text on invoke when terminal output is empty", async () => {
+    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+
+    vi.spyOn(model.client, "streamEvents").mockImplementation(
+      async function* () {
+        yield { type: "response.output_text.delta", delta: "I" }
+        yield { type: "response.output_text.delta", delta: " love" }
+        yield { type: "response.output_text.delta", delta: " you" }
+        yield {
+          type: "response.done",
+          response: { output: [], status: "completed" },
+        }
+      },
+    )
+
+    const result = await model.invoke([new HumanMessage("hi")])
+
+    expect(result.content).toBe("I love you")
+  })
+
+  test("recovers streamed tool calls on invoke when terminal output is empty", async () => {
+    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+
+    vi.spyOn(model.client, "streamEvents").mockImplementation(
+      async function* () {
+        yield {
+          type: "response.output_item.added",
+          output_index: 0,
+          item: {
+            type: "function_call",
+            call_id: "call_123",
+            name: "Answer",
+          },
+        }
+        yield {
+          type: "response.function_call_arguments.delta",
+          output_index: 0,
+          call_id: "call_123",
+          delta: '{"answer": ',
+        }
+        yield {
+          type: "response.function_call_arguments.delta",
+          output_index: 0,
+          call_id: "call_123",
+          delta: '"hi"}',
+        }
+        yield {
+          type: "response.done",
+          response: { output: [], status: "completed" },
+        }
+      },
+    )
+
+    const result = await model.invoke([new HumanMessage("hi")])
+
+    expect(result.tool_calls?.[0]).toMatchObject({
+      id: "call_123",
+      name: "Answer",
+      args: { answer: "hi" },
+    })
+  })
+
   test("parses direct withStructuredOutput without includeRaw", async () => {
     const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
     const ContactInfo = z.object({
