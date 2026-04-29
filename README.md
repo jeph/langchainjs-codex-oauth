@@ -104,6 +104,7 @@ Notes:
 - Credentials are stored in `~/.langchainjs-codex-oauth/auth/openai.json` by default.
 - That auth file gives local access to your ChatGPT/Codex session for this package, so treat it like a secret.
 - Expired access tokens are refreshed automatically and written back to the auth file.
+- `ChatCodexOAuth` also starts a background auth refresh poller by default. It checks credentials every 30 seconds and refreshes when the access token is expired or close to expiring.
 - If you use ChatGPT Business or Enterprise, make sure your workspace permits Codex access and local OAuth sign-in before relying on this setup.
 
 ## Quickstart
@@ -220,6 +221,9 @@ Constructor options:
 - `maxRetries`
 - `baseURL`
 - `authPath`
+- `backgroundAuthRefresh`: enabled by default; set `false` to disable, or pass `{ intervalMs, refreshBeforeExpiryMs }`
+
+Background auth refresh uses an unref'd timer, so it should not keep Node.js running by itself. If you create many clients, call `model.stopBackgroundAuthRefresh()` when a long-lived instance is no longer needed. Use one auth file per process or serialized workflow; multiple processes refreshing the same file can race because refresh tokens may rotate.
 
 Environment variables:
 

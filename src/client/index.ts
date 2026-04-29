@@ -2,6 +2,7 @@ export {
   CodexClient,
   CODEX_BASE_URL,
   DEFAULT_INCLUDE,
+  type BackgroundAuthRefreshOptions,
   type CodexClientOptions,
 } from "./codex_client.js"
 export type {

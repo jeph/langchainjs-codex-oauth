@@ -212,6 +212,8 @@ export class ChatCodexOAuth extends BaseChatModel<
 
   authPath?: string
 
+  backgroundAuthRefresh: ChatCodexOAuthParams["backgroundAuthRefresh"]
+
   readonly client: CodexClient
 
   constructor(fields: ChatCodexOAuthParams = {}) {
@@ -231,12 +233,18 @@ export class ChatCodexOAuth extends BaseChatModel<
       getEnvironmentVariable(BASE_URL_ENV) ??
       "https://chatgpt.com/backend-api"
     this.authPath = fields.authPath
+    this.backgroundAuthRefresh = fields.backgroundAuthRefresh
     this.client = new CodexClient({
       authStore: new AuthStore(fields.authPath),
       baseURL: this.baseURL,
       timeoutMs: this.timeout,
       maxRetries: this.maxRetries,
+      backgroundAuthRefresh: this.backgroundAuthRefresh,
     })
+  }
+
+  stopBackgroundAuthRefresh(): void {
+    this.client.stopBackgroundAuthRefresh()
   }
 
   override get lc_aliases(): Record<string, string> {
