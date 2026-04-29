@@ -51,6 +51,7 @@
     "example:tools": "tsx examples/langchain/tools.ts",
     "example:agent": "tsx examples/langgraph/agent.ts",
     "smoke:live": "tsx examples/langchain/hello.ts",
+    "verify:background-auth-refresh": "tsx scripts/verify-background-auth-refresh.ts",
     "test:exports": "node test_exports.mjs"
   },
   "dependencies": {
