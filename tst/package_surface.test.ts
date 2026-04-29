@@ -31,9 +31,13 @@ import {
 } from "../src/client/index.js"
 
 const validReasoningEffort: ReasoningEffort = "xhigh"
+const minimalReasoningEffort: ReasoningEffort = "minimal"
 
 // @ts-expect-error invalid reasoning effort should be rejected
 const invalidReasoningEffort: ReasoningEffort = "ultra"
+
+// @ts-expect-error max is not a backend-supported reasoning effort
+const invalidMaxReasoningEffort: ReasoningEffort = "max"
 
 // @ts-expect-error invalid text verbosity should be rejected
 const invalidTextVerbosity: TextVerbosity = "xhigh"
@@ -73,7 +77,7 @@ describe("package surface", () => {
     const backendTools: CodexBackendTool[] = [backendTool]
 
     const params = {
-      model: "gpt-5.2-codex",
+      model: "gpt-5.5",
       reasoningEffort,
       reasoningSummary,
       textVerbosity,
@@ -142,6 +146,8 @@ describe("package surface", () => {
     expect(completion.parsed.content).toBe("ok")
     expect(REDIRECT_URI).toContain("localhost")
     expect(validReasoningEffort).toBe("xhigh")
+    expect(minimalReasoningEffort).toBe("minimal")
     expect(invalidReasoningSummary).toBe("brief")
+    expect(invalidMaxReasoningEffort).toBe("max")
   })
 })

@@ -104,6 +104,7 @@ Notes:
 - Credentials are stored in `~/.langchainjs-codex-oauth/auth/openai.json` by default.
 - That auth file gives local access to your ChatGPT/Codex session for this package, so treat it like a secret.
 - Expired access tokens are refreshed automatically and written back to the auth file.
+- `ChatCodexOAuth` also starts a background auth refresh poller by default. It checks credentials every 30 seconds and refreshes when the access token is expired or close to expiring.
 - If you use ChatGPT Business or Enterprise, make sure your workspace permits Codex access and local OAuth sign-in before relying on this setup.
 
 ## Quickstart
@@ -113,7 +114,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages"
 import { ChatCodexOAuth } from "langchainjs-codex-oauth"
 
 const model = new ChatCodexOAuth({
-  model: "gpt-5.2-codex",
+  model: "gpt-5.5",
 })
 
 const result = await model.invoke([
@@ -152,7 +153,7 @@ const add = tool(async ({ a, b }) => `${a + b}`, {
   }),
 })
 
-const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" }).bindTools([add])
+const model = new ChatCodexOAuth({ model: "gpt-5.5" }).bindTools([add])
 const prompt = "What is 17 + 25? Use the add_numbers tool before answering."
 const first = await model.invoke([new HumanMessage(prompt)])
 const call = first.tool_calls?.[0]
@@ -189,7 +190,7 @@ const ContactInfo = z.object({
 })
 
 const model = new ChatCodexOAuth({
-  model: "gpt-5.2-codex",
+  model: "gpt-5.5",
 }).withStructuredOutput(ContactInfo)
 
 const result = await model.invoke(
@@ -209,10 +210,10 @@ Structured output works through function calling. `includeRaw: true` is also sup
 
 Constructor options:
 
-- `model`: model name to request, default `gpt-5.2-codex`
+- `model`: model name to request, default `gpt-5.5`
 - `temperature`
 - `maxTokens`
-- `reasoningEffort`: `"none"`, `"low"`, `"medium"` (default), `"high"`, or `"xhigh"`
+- `reasoningEffort`: `"none"`, `"minimal"`, `"low"`, `"medium"` (default), `"high"`, or `"xhigh"`. The backend currently rejects `"max"`; use `"xhigh"` for the highest supported setting.
 - `reasoningSummary`: `"concise"`, `"detailed"`, or `"auto"`
 - `textVerbosity`: `"low"`, `"medium"` (default), or `"high"`
 - `include`: for example `["reasoning.encrypted_content"]`
@@ -220,6 +221,9 @@ Constructor options:
 - `maxRetries`
 - `baseURL`
 - `authPath`
+- `backgroundAuthRefresh`: enabled by default; set `false` to disable, or pass `{ intervalMs, refreshBeforeExpiryMs }`
+
+Background auth refresh uses an unref'd timer, so it should not keep Node.js running by itself. If you create many clients, call `model.stopBackgroundAuthRefresh()` when a long-lived instance is no longer needed. Use one auth file per process or serialized workflow; multiple processes refreshing the same file can race because refresh tokens may rotate.
 
 Environment variables:
 

@@ -23,6 +23,9 @@ import type {
   ReasoningSummary,
   TextVerbosity,
 } from "../client/types.js"
+import type { BackgroundAuthRefreshOptions } from "../client/codex_client.js"
+
+export type { BackgroundAuthRefreshOptions } from "../client/codex_client.js"
 
 type OpenToolName = string & Record<never, never>
 
@@ -49,6 +52,7 @@ export interface ChatCodexOAuthParams
   timeout?: number
   maxRetries?: number
   authPath?: string
+  backgroundAuthRefresh?: boolean | BackgroundAuthRefreshOptions
 }
 
 export interface ChatCodexOAuthCallOptions

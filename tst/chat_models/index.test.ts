@@ -10,7 +10,7 @@ import { ChatCodexOAuth } from "../../src/index.js"
 
 describe("ChatCodexOAuth", () => {
   test("truncates stop sequences on invoke", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
     vi.spyOn(model.client, "completeWithResponse").mockResolvedValue({
       parsed: {
         content: "hello STOP world",
@@ -28,7 +28,7 @@ describe("ChatCodexOAuth", () => {
   })
 
   test("passes system prompts as top-level instructions", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
     let captured: Record<string, unknown> | undefined
 
     vi.spyOn(model.client, "completeWithResponse").mockImplementation(
@@ -58,7 +58,7 @@ describe("ChatCodexOAuth", () => {
   })
 
   test("sends empty instructions when no system prompt is present", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
     let captured: Record<string, unknown> | undefined
 
     vi.spyOn(model.client, "completeWithResponse").mockImplementation(
@@ -82,7 +82,7 @@ describe("ChatCodexOAuth", () => {
 
   test("passes per-call request overrides on invoke", async () => {
     const model = new ChatCodexOAuth({
-      model: "gpt-5.2-codex",
+      model: "gpt-5.5",
       reasoningEffort: "medium",
       textVerbosity: "medium",
       include: ["reasoning.encrypted_content"],
@@ -119,7 +119,7 @@ describe("ChatCodexOAuth", () => {
   })
 
   test("recovers streamed text on invoke when terminal output is empty", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
 
     vi.spyOn(model.client, "streamEvents").mockImplementation(
       async function* () {
@@ -139,7 +139,7 @@ describe("ChatCodexOAuth", () => {
   })
 
   test("recovers streamed tool calls on invoke when terminal output is empty", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
 
     vi.spyOn(model.client, "streamEvents").mockImplementation(
       async function* () {
@@ -181,7 +181,7 @@ describe("ChatCodexOAuth", () => {
   })
 
   test("parses direct withStructuredOutput without includeRaw", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
     const ContactInfo = z.object({
       name: z.string(),
       email: z.string(),
@@ -216,7 +216,7 @@ describe("ChatCodexOAuth", () => {
   })
 
   test("parses direct withStructuredOutput with includeRaw", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
     const ContactInfo = z.object({
       name: z.string(),
       email: z.string(),
@@ -257,7 +257,7 @@ describe("ChatCodexOAuth", () => {
   })
 
   test("emits tool call chunks while streaming", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
 
     vi.spyOn(model.client, "streamEvents").mockImplementation(
       async function* () {
@@ -316,7 +316,7 @@ describe("ChatCodexOAuth", () => {
   })
 
   test("maps item_id tool deltas to the final call_id while streaming", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
 
     vi.spyOn(model.client, "streamEvents").mockImplementation(
       async function* () {
@@ -384,7 +384,7 @@ describe("ChatCodexOAuth", () => {
   })
 
   test("truncates stop sequences while streaming", async () => {
-    const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
 
     vi.spyOn(model.client, "streamEvents").mockImplementation(
       async function* () {
@@ -413,7 +413,7 @@ describe("ChatCodexOAuth", () => {
 
   test("passes per-call request overrides while streaming", async () => {
     const model = new ChatCodexOAuth({
-      model: "gpt-5.2-codex",
+      model: "gpt-5.5",
       reasoningEffort: "medium",
       textVerbosity: "medium",
       include: ["reasoning.encrypted_content"],

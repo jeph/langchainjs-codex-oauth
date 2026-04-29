@@ -1,5 +1,6 @@
 export { ChatCodexOAuth } from "./chat_models/index.js"
 export type {
+  BackgroundAuthRefreshOptions,
   ChatCodexOAuthCallOptions,
   ChatCodexOAuthFields,
   ChatCodexOAuthParams,

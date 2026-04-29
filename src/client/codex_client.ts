@@ -33,6 +33,68 @@ export interface CodexClientOptions {
   timeoutMs?: number
   maxRetries?: number
   fetchFn?: typeof fetch
+  backgroundAuthRefresh?: boolean | BackgroundAuthRefreshOptions
+}
+
+export interface BackgroundAuthRefreshOptions {
+  intervalMs?: number
+  refreshBeforeExpiryMs?: number
+}
+
+const DEFAULT_BACKGROUND_AUTH_REFRESH_INTERVAL_MS = 30_000
+const DEFAULT_BACKGROUND_AUTH_REFRESH_BEFORE_EXPIRY_MS = 60_000
+
+const authStoreRefreshKeys = new WeakMap<object, string>()
+const authStoreRefreshPromises = new Map<string, Promise<OAuthCredentials>>()
+let nextAuthStoreRefreshKey = 0
+
+function authStoreRefreshKey(authStore: AuthStore): string {
+  const authPath = (authStore as { authPath?: unknown }).authPath
+
+  if (typeof authPath === "string") {
+    return `path:${authPath}`
+  }
+
+  const existing = authStoreRefreshKeys.get(authStore)
+
+  if (existing) {
+    return existing
+  }
+
+  const key = `store:${nextAuthStoreRefreshKey}`
+  nextAuthStoreRefreshKey += 1
+  authStoreRefreshKeys.set(authStore, key)
+  return key
+}
+
+function normalizeBackgroundAuthRefreshOptions(
+  options: boolean | BackgroundAuthRefreshOptions | undefined,
+): Required<BackgroundAuthRefreshOptions> | undefined {
+  if (options === false) {
+    return undefined
+  }
+
+  const configured = options === true || options === undefined ? {} : options
+  const intervalMs =
+    configured.intervalMs ?? DEFAULT_BACKGROUND_AUTH_REFRESH_INTERVAL_MS
+  const refreshBeforeExpiryMs =
+    configured.refreshBeforeExpiryMs ??
+    DEFAULT_BACKGROUND_AUTH_REFRESH_BEFORE_EXPIRY_MS
+
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+    throw new Error("backgroundAuthRefresh.intervalMs must be positive.")
+  }
+
+  if (!Number.isFinite(refreshBeforeExpiryMs) || refreshBeforeExpiryMs < 0) {
+    throw new Error(
+      "backgroundAuthRefresh.refreshBeforeExpiryMs must be non-negative.",
+    )
+  }
+
+  return {
+    intervalMs,
+    refreshBeforeExpiryMs,
+  }
 }
 
 function backoffMs(attempt: number): number {
@@ -174,51 +236,145 @@ export class CodexClient {
 
   readonly fetchFn: typeof fetch
 
+  private backgroundAuthRefreshTimer?: ReturnType<typeof setInterval>
+
+  private backgroundAuthRefreshInFlight?: Promise<void>
+
   constructor(options: CodexClientOptions = {}) {
     this.authStore = options.authStore ?? new AuthStore(options.authPath)
     this.baseURL = (options.baseURL ?? CODEX_BASE_URL).replace(/\/$/u, "")
     this.timeoutMs = options.timeoutMs ?? 60_000
     this.maxRetries = options.maxRetries ?? 2
     this.fetchFn = options.fetchFn ?? fetch
+
+    const backgroundAuthRefresh = normalizeBackgroundAuthRefreshOptions(
+      options.backgroundAuthRefresh,
+    )
+
+    if (backgroundAuthRefresh) {
+      this.startBackgroundAuthRefresh(backgroundAuthRefresh)
+    }
   }
 
-  private async loadValidCredentials(): Promise<OAuthCredentials> {
-    const creds = await this.authStore.load()
+  private async refreshExpiredCredentials(
+    refreshBeforeExpiryMs: number,
+  ): Promise<OAuthCredentials> {
+    const key = authStoreRefreshKey(this.authStore)
+    const existing = authStoreRefreshPromises.get(key)
 
-    if (creds.expires > Date.now()) {
+    if (existing) {
+      return existing
+    }
+
+    const refresh = (async (): Promise<OAuthCredentials> => {
+      const creds = await this.authStore.load()
+
+      if (creds.expires > Date.now() + refreshBeforeExpiryMs) {
+        return creds
+      }
+
+      const refreshed = await refreshAccessToken({
+        refreshToken: creds.refresh,
+        fetchFn: this.fetchFn,
+      })
+      const payload = decodeJwtPayload(refreshed.access)
+
+      if (!payload) {
+        throw new NotAuthenticatedError(
+          "Token refresh succeeded but the access token was invalid. Re-run `npx langchainjs-codex-oauth auth login`.",
+        )
+      }
+
+      const accountId = extractChatGPTAccountId(payload)
+
+      if (!accountId) {
+        throw new NotAuthenticatedError(
+          "Failed to derive chatgpt_account_id from the refreshed token. Re-run `npx langchainjs-codex-oauth auth login`.",
+        )
+      }
+
+      const next: OAuthCredentials = {
+        type: "oauth",
+        access: refreshed.access,
+        refresh: refreshed.refresh,
+        expires: refreshed.expiresAtMs,
+        accountId,
+      }
+
+      await this.authStore.save(next)
+      return next
+    })()
+
+    authStoreRefreshPromises.set(key, refresh)
+
+    try {
+      return await refresh
+    } finally {
+      if (authStoreRefreshPromises.get(key) === refresh) {
+        authStoreRefreshPromises.delete(key)
+      }
+    }
+  }
+
+  async refreshAuthIfNeeded(
+    options: BackgroundAuthRefreshOptions = {},
+  ): Promise<OAuthCredentials> {
+    const creds = await this.authStore.load()
+    const refreshBeforeExpiryMs = options.refreshBeforeExpiryMs ?? 0
+
+    if (creds.expires > Date.now() + refreshBeforeExpiryMs) {
       return creds
     }
 
-    const refreshed = await refreshAccessToken({
-      refreshToken: creds.refresh,
-      fetchFn: this.fetchFn,
-    })
-    const payload = decodeJwtPayload(refreshed.access)
+    return this.refreshExpiredCredentials(refreshBeforeExpiryMs)
+  }
 
-    if (!payload) {
-      throw new NotAuthenticatedError(
-        "Token refresh succeeded but the access token was invalid. Re-run `npx langchainjs-codex-oauth auth login`.",
-      )
+  startBackgroundAuthRefresh(options: BackgroundAuthRefreshOptions = {}): void {
+    const normalized = normalizeBackgroundAuthRefreshOptions(options)
+
+    if (!normalized) {
+      this.stopBackgroundAuthRefresh()
+      return
     }
 
-    const accountId = extractChatGPTAccountId(payload)
+    this.stopBackgroundAuthRefresh()
 
-    if (!accountId) {
-      throw new NotAuthenticatedError(
-        "Failed to derive chatgpt_account_id from the refreshed token. Re-run `npx langchainjs-codex-oauth auth login`.",
-      )
+    const tick = (): void => {
+      if (this.backgroundAuthRefreshInFlight) {
+        return
+      }
+
+      this.backgroundAuthRefreshInFlight = this.refreshAuthIfNeeded({
+        refreshBeforeExpiryMs: normalized.refreshBeforeExpiryMs,
+      })
+        .then(() => undefined)
+        .catch(() => undefined)
+        .finally(() => {
+          this.backgroundAuthRefreshInFlight = undefined
+        })
     }
 
-    const next: OAuthCredentials = {
-      type: "oauth",
-      access: refreshed.access,
-      refresh: refreshed.refresh,
-      expires: refreshed.expiresAtMs,
-      accountId,
+    const timer = setInterval(tick, normalized.intervalMs)
+
+    if (
+      typeof timer === "object" &&
+      timer !== null &&
+      "unref" in timer &&
+      typeof timer.unref === "function"
+    ) {
+      timer.unref()
     }
 
-    await this.authStore.save(next)
-    return next
+    this.backgroundAuthRefreshTimer = timer
+  }
+
+  stopBackgroundAuthRefresh(): void {
+    if (!this.backgroundAuthRefreshTimer) {
+      return
+    }
+
+    clearInterval(this.backgroundAuthRefreshTimer)
+    this.backgroundAuthRefreshTimer = undefined
   }
 
   private buildHeaders(creds: OAuthCredentials): Headers {
@@ -458,7 +614,7 @@ export class CodexClient {
     throwIfAborted(params.signal)
 
     const url = `${this.baseURL}${CODEX_RESPONSES_PATH}`
-    const creds = await this.loadValidCredentials()
+    const creds = await this.refreshAuthIfNeeded()
 
     yield* this.streamEventsWithRetry(url, creds, params, INITIAL_RETRY_STATE)
   }

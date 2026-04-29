@@ -14,7 +14,7 @@ const add = tool(async ({ a, b }) => JSON.stringify({ result: a + b }), {
 })
 
 const model = new ChatCodexOAuth({
-  model: process.env.LANGCHAINJS_CODEX_OAUTH_MODEL ?? "gpt-5.2-codex",
+  model: process.env.LANGCHAINJS_CODEX_OAUTH_MODEL ?? "gpt-5.5",
   maxTokens: 180,
 })
 const prompt = "What is 17 + 25? Use the add_numbers tool before answering."

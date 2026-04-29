@@ -30,7 +30,7 @@ describe("published package and CLI e2e", () => {
       '].join("")',
       'const authStore = { load: async () => ({ type: "oauth", access: "access", refresh: "refresh", expires: Date.now() + 60_000, accountId: "acct_123" }) }',
       'const fetchFn = async () => new Response(streamFromText(sse), { status: 200, headers: { "Content-Type": "text/event-stream" } })',
-      'const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" })',
+      'const model = new ChatCodexOAuth({ model: "gpt-5.5" })',
       'Reflect.set(model, "client", new CodexClient({ authStore, fetchFn, maxRetries: 0 }))',
       'const result = await model.invoke([new HumanMessage("hi")])',
       "process.stdout.write(JSON.stringify({ text: result.text }))",

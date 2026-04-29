@@ -25,7 +25,7 @@ const add = tool(async ({ a, b }) => `${a + b}`, {
 })
 
 const llm = new ChatCodexOAuth({
-  model: process.env.LANGCHAINJS_CODEX_OAUTH_MODEL ?? "gpt-5.2-codex",
+  model: process.env.LANGCHAINJS_CODEX_OAUTH_MODEL ?? "gpt-5.5",
   maxTokens: 180,
 }).bindTools([add])
 
