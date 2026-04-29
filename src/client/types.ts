@@ -4,17 +4,13 @@ export type MessageRole = "developer" | "user" | "assistant"
 
 type OpenString = string & Record<never, never>
 
-export type ReasoningEffort =
-  | "none"
-  | "minimal"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh"
+export type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh"
 
 export type ReasoningSummary = "concise" | "detailed" | "auto"
 
 export type TextVerbosity = "low" | "medium" | "high"
+
+export type CodexServiceTier = "default" | "priority"
 
 export type CodexInclude = "reasoning.encrypted_content" | OpenString
 
@@ -137,6 +133,7 @@ export interface CodexRequestParams {
   reasoningEffort?: ReasoningEffort
   reasoningSummary?: ReasoningSummary
   textVerbosity?: TextVerbosity
+  serviceTier?: CodexServiceTier
   include?: CodexInclude[]
   instructions?: string
   signal?: AbortSignal

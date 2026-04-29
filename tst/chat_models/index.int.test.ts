@@ -78,6 +78,28 @@ describe.skipIf(!hasAuth)("ChatCodexOAuth live integration", () => {
     expect(result.usage_metadata?.total_tokens).toBeGreaterThan(0)
   })
 
+  test("invokes the live backend with explicit default service tier", async () => {
+    const marker = "LCJS_SERVICE_TIER_DEFAULT_OK"
+    const model = createModel({ maxTokens: 40, serviceTier: "default" })
+
+    const result = await model.invoke([
+      new HumanMessage(`Reply with exactly ${marker} and nothing else.`),
+    ])
+
+    expect(textOf(result.content).trim()).toBe(marker)
+  })
+
+  test("invokes the live backend with priority service tier", async () => {
+    const marker = "LCJS_SERVICE_TIER_PRIORITY_OK"
+    const model = createModel({ maxTokens: 40, serviceTier: "priority" })
+
+    const result = await model.invoke([
+      new HumanMessage(`Reply with exactly ${marker} and nothing else.`),
+    ])
+
+    expect(textOf(result.content).trim()).toBe(marker)
+  })
+
   test("streams text from the live backend", async () => {
     const model = createModel({ maxTokens: 80 })
     const parts: string[] = []

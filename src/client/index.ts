@@ -15,6 +15,7 @@ export type {
   CodexInputItem,
   CodexInvalidToolCall,
   CodexRequestParams,
+  CodexServiceTier,
   CodexToolReference,
   CodexToolCall,
   CodexToolChoice,

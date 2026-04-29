@@ -107,6 +107,7 @@ describe("ChatCodexOAuth", () => {
       reasoningEffort: "low",
       reasoningSummary: "concise",
       textVerbosity: "high",
+      serviceTier: "priority",
       include: ["custom.include"],
     })
 
@@ -114,6 +115,7 @@ describe("ChatCodexOAuth", () => {
       reasoningEffort: "low",
       reasoningSummary: "concise",
       textVerbosity: "high",
+      serviceTier: "priority",
       include: ["custom.include"],
     })
   })

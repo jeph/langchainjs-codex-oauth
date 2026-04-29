@@ -213,9 +213,10 @@ Constructor options:
 - `model`: model name to request, default `gpt-5.5`
 - `temperature`
 - `maxTokens`
-- `reasoningEffort`: `"none"`, `"minimal"`, `"low"`, `"medium"` (default), `"high"`, or `"xhigh"`. The backend currently rejects `"max"`; use `"xhigh"` for the highest supported setting.
+- `reasoningEffort`: `"none"`, `"low"`, `"medium"` (default), `"high"`, or `"xhigh"`. The backend currently rejects `"max"` and `"minimal"` for current ChatGPT Codex models; use `"xhigh"` for the highest supported setting.
 - `reasoningSummary`: `"concise"`, `"detailed"`, or `"auto"`
 - `textVerbosity`: `"low"`, `"medium"` (default), or `"high"`
+- `serviceTier`: `"default"` or `"priority"`. Omit it, or set `"default"`, for regular Codex routing. Set `"priority"` explicitly to request Codex Fast mode for supported models; this consumes credits faster.
 - `include`: for example `["reasoning.encrypted_content"]`
 - `timeout`: request timeout in milliseconds
 - `maxRetries`
@@ -224,6 +225,17 @@ Constructor options:
 - `backgroundAuthRefresh`: enabled by default; set `false` to disable, or pass `{ intervalMs, refreshBeforeExpiryMs }`
 
 Background auth refresh uses an unref'd timer, so it should not keep Node.js running by itself. If you create many clients, call `model.stopBackgroundAuthRefresh()` when a long-lived instance is no longer needed. Use one auth file per process or serialized workflow; multiple processes refreshing the same file can race because refresh tokens may rotate.
+
+Regular routing is the default. Fast mode must be requested explicitly:
+
+```ts
+const regular = new ChatCodexOAuth({ model: "gpt-5.5" })
+
+const fast = new ChatCodexOAuth({
+  model: "gpt-5.5",
+  serviceTier: "priority",
+})
+```
 
 Environment variables:
 
