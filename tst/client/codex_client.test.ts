@@ -102,7 +102,7 @@ describe("CodexClient errors", () => {
 
     await client.complete({
       inputItems: [],
-      model: "gpt-5.2-codex",
+      model: "gpt-5.5",
     })
 
     expect(capturedBody?.instructions).toBe("")
@@ -140,7 +140,7 @@ describe("CodexClient errors", () => {
 
     await client.complete({
       inputItems: [],
-      model: "gpt-5.2-codex",
+      model: "gpt-5.5",
       instructions: "You are a router.",
     })
 

@@ -219,7 +219,7 @@ export class ChatCodexOAuth extends BaseChatModel<
   constructor(fields: ChatCodexOAuthParams = {}) {
     super(fields)
     this._addVersion("langchainjs-codex-oauth", VERSION)
-    this.model = fields.model ?? "gpt-5.2-codex"
+    this.model = fields.model ?? "gpt-5.5"
     this.temperature = fields.temperature ?? parseFloatEnv(TEMPERATURE_ENV)
     this.maxTokens = fields.maxTokens ?? parseIntegerEnv(MAX_TOKENS_ENV)
     this.reasoningEffort = fields.reasoningEffort ?? "medium"

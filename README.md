@@ -114,7 +114,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages"
 import { ChatCodexOAuth } from "langchainjs-codex-oauth"
 
 const model = new ChatCodexOAuth({
-  model: "gpt-5.2-codex",
+  model: "gpt-5.5",
 })
 
 const result = await model.invoke([
@@ -153,7 +153,7 @@ const add = tool(async ({ a, b }) => `${a + b}`, {
   }),
 })
 
-const model = new ChatCodexOAuth({ model: "gpt-5.2-codex" }).bindTools([add])
+const model = new ChatCodexOAuth({ model: "gpt-5.5" }).bindTools([add])
 const prompt = "What is 17 + 25? Use the add_numbers tool before answering."
 const first = await model.invoke([new HumanMessage(prompt)])
 const call = first.tool_calls?.[0]
@@ -190,7 +190,7 @@ const ContactInfo = z.object({
 })
 
 const model = new ChatCodexOAuth({
-  model: "gpt-5.2-codex",
+  model: "gpt-5.5",
 }).withStructuredOutput(ContactInfo)
 
 const result = await model.invoke(
@@ -210,10 +210,10 @@ Structured output works through function calling. `includeRaw: true` is also sup
 
 Constructor options:
 
-- `model`: model name to request, default `gpt-5.2-codex`
+- `model`: model name to request, default `gpt-5.5`
 - `temperature`
 - `maxTokens`
-- `reasoningEffort`: `"none"`, `"low"`, `"medium"` (default), `"high"`, or `"xhigh"`
+- `reasoningEffort`: `"none"`, `"minimal"`, `"low"`, `"medium"` (default), `"high"`, or `"xhigh"`. The backend currently rejects `"max"`; use `"xhigh"` for the highest supported setting.
 - `reasoningSummary`: `"concise"`, `"detailed"`, or `"auto"`
 - `textVerbosity`: `"low"`, `"medium"` (default), or `"high"`
 - `include`: for example `["reasoning.encrypted_content"]`

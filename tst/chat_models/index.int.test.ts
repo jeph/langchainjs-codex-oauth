@@ -24,7 +24,7 @@ import { defaultAuthPath } from "../../src/auth/index.js"
 import { ChatCodexOAuth } from "../../src/index.js"
 
 const hasAuth = existsSync(defaultAuthPath())
-const modelName = process.env.LANGCHAINJS_CODEX_OAUTH_MODEL ?? "gpt-5.2-codex"
+const modelName = process.env.LANGCHAINJS_CODEX_OAUTH_MODEL ?? "gpt-5.5"
 
 function textOf(content: unknown): string {
   return typeof content === "string" ? content : JSON.stringify(content)
