@@ -508,6 +508,33 @@ describe("ChatCodexOAuth", () => {
     expect(parts.join("")).toBe("hello ")
   })
 
+  test("streams many response events without growing the call stack", async () => {
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
+
+    vi.spyOn(model.client, "streamEvents").mockImplementation(
+      async function* () {
+        for (let index = 0; index < 12_000; index += 1) {
+          yield { type: "response.output_text.delta", delta: "x" }
+        }
+
+        yield {
+          type: "response.done",
+          response: { output: [], status: "completed" },
+        }
+      },
+    )
+
+    let count = 0
+
+    for await (const chunk of await model.stream([new HumanMessage("hi")])) {
+      if (typeof chunk.content === "string" && chunk.content.length > 0) {
+        count += chunk.content.length
+      }
+    }
+
+    expect(count).toBe(12_000)
+  })
+
   test("passes per-call request overrides while streaming", async () => {
     const model = new ChatCodexOAuth({
       model: "gpt-5.5",

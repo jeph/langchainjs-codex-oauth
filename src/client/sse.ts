@@ -146,40 +146,26 @@ function finalizeSseState(
   }
 }
 
-async function* emitParsedEvents(
-  events: readonly Record<string, unknown>[],
-): AsyncGenerator<Record<string, unknown>> {
-  for (const event of events) {
-    yield event
-  }
-}
-
-async function* parseStreamEvents(
-  chunks: AsyncGenerator<Uint8Array>,
-  decoder: TextDecoder,
-  state: SseParserState,
-): AsyncGenerator<Record<string, unknown>> {
-  const next = await chunks.next()
-
-  if (next.done) {
-    yield* emitParsedEvents(finalizeSseState(state, decoder.decode()).events)
-    return
-  }
-
-  const result = parseSseChunk(
-    state,
-    decoder.decode(next.value, { stream: true }),
-  )
-
-  yield* emitParsedEvents(result.events)
-  yield* parseStreamEvents(chunks, decoder, result.state)
-}
-
 export async function* iterSseEvents(
   stream: ReadableStream<Uint8Array>,
 ): AsyncGenerator<Record<string, unknown>> {
   const decoder = new TextDecoder()
-  yield* parseStreamEvents(streamChunks(stream), decoder, EMPTY_SSE_STATE)
+  let state = EMPTY_SSE_STATE
+
+  for await (const chunk of streamChunks(stream)) {
+    const result = parseSseChunk(state, decoder.decode(chunk, { stream: true }))
+    state = result.state
+
+    for (const event of result.events) {
+      yield event
+    }
+  }
+
+  const result = finalizeSseState(state, decoder.decode())
+
+  for (const event of result.events) {
+    yield event
+  }
 }
 
 export function isTerminalEvent(event: Record<string, unknown>): boolean {

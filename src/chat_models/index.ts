@@ -739,35 +739,26 @@ export class ChatCodexOAuth extends BaseChatModel<
     runManager: CallbackManagerForLLMRun | undefined,
     streamState: StreamState,
   ): AsyncGenerator<ChatGenerationChunk> {
-    const next = await events.next()
+    let currentState = streamState
 
-    if (next.done) {
-      return
+    for await (const event of events) {
+      throwIfAborted(signal)
+
+      const step = this.processStreamEvent(
+        event,
+        currentState,
+        stop,
+        maxStopLength,
+      )
+
+      yield* this.emitStreamStep(step, runManager)
+
+      if (step.done) {
+        return
+      }
+
+      currentState = step.state
     }
-
-    throwIfAborted(signal)
-
-    const step = this.processStreamEvent(
-      next.value,
-      streamState,
-      stop,
-      maxStopLength,
-    )
-
-    yield* this.emitStreamStep(step, runManager)
-
-    if (step.done) {
-      return
-    }
-
-    yield* this.streamResponseEventChunks(
-      events,
-      signal,
-      stop,
-      maxStopLength,
-      runManager,
-      step.state,
-    )
   }
 
   override async _generate(
