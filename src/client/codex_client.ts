@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { setTimeout as sleep } from "node:timers/promises"
 
 import { AuthStore, type OAuthCredentials } from "../auth/store.js"
@@ -34,6 +35,8 @@ export interface CodexClientOptions {
   maxRetries?: number
   fetchFn?: typeof fetch
   backgroundAuthRefresh?: boolean | BackgroundAuthRefreshOptions
+  promptCaching?: boolean
+  promptCacheKey?: string
 }
 
 export interface BackgroundAuthRefreshOptions {
@@ -144,6 +147,10 @@ function throwIfAborted(signal?: AbortSignal): void {
   throw new Error("Request aborted.")
 }
 
+function defaultPromptCacheKey(): string {
+  return `lcjs-codex-${randomUUID()}`
+}
+
 function normalizeServiceTier(
   serviceTier: CodexRequestParams["serviceTier"],
 ): string | undefined {
@@ -161,6 +168,7 @@ interface RequestRetryState {
   readonly includeToolChoice: boolean
   readonly includeTemperature: boolean
   readonly includeMaxOutputTokens: boolean
+  readonly includePromptCacheKey: boolean
 }
 
 type RequestAttemptResult =
@@ -178,6 +186,7 @@ const INITIAL_RETRY_STATE: RequestRetryState = {
   includeToolChoice: true,
   includeTemperature: true,
   includeMaxOutputTokens: true,
+  includePromptCacheKey: true,
 }
 
 interface StreamedToolCallState {
@@ -248,6 +257,10 @@ export class CodexClient {
 
   readonly fetchFn: typeof fetch
 
+  readonly promptCaching: boolean
+
+  readonly promptCacheKey: string
+
   private backgroundAuthRefreshTimer?: ReturnType<typeof setInterval>
 
   private backgroundAuthRefreshInFlight?: Promise<void>
@@ -258,6 +271,8 @@ export class CodexClient {
     this.timeoutMs = options.timeoutMs ?? 60_000
     this.maxRetries = options.maxRetries ?? 2
     this.fetchFn = options.fetchFn ?? fetch
+    this.promptCaching = options.promptCaching ?? true
+    this.promptCacheKey = options.promptCacheKey ?? defaultPromptCacheKey()
 
     const backgroundAuthRefresh = normalizeBackgroundAuthRefreshOptions(
       options.backgroundAuthRefresh,
@@ -421,6 +436,7 @@ export class CodexClient {
         }
       : undefined
     const serviceTier = normalizeServiceTier(params.serviceTier)
+    const promptCacheKey = this.resolvePromptCacheKey(params, retryState)
 
     return {
       model: normalizeModel(params.model),
@@ -443,7 +459,27 @@ export class CodexClient {
       ...(reasoning ? { reasoning } : {}),
       ...(text ? { text } : {}),
       ...(serviceTier ? { service_tier: serviceTier } : {}),
+      ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
     }
+  }
+
+  private resolvePromptCacheKey(
+    params: CodexRequestParams,
+    retryState: RequestRetryState,
+  ): string | undefined {
+    if (!retryState.includePromptCacheKey) {
+      return undefined
+    }
+
+    if ((params.promptCaching ?? this.promptCaching) === false) {
+      return undefined
+    }
+
+    const key =
+      params.promptCacheKey !== undefined
+        ? params.promptCacheKey
+        : this.promptCacheKey
+    return key.length > 0 ? key : undefined
   }
 
   static async toApiError(response: Response): Promise<CodexAPIError> {
@@ -573,6 +609,20 @@ export class CodexClient {
       return {
         ...retryState,
         includeMaxOutputTokens: false,
+      }
+    }
+
+    if (
+      retryState.includePromptCacheKey &&
+      this.resolvePromptCacheKey(params, retryState) !== undefined &&
+      error.statusCode === 400 &&
+      (haystack.includes("prompt_cache_key") ||
+        haystack.includes("promptcachekey") ||
+        haystack.includes("prompt cache"))
+    ) {
+      return {
+        ...retryState,
+        includePromptCacheKey: false,
       }
     }
 

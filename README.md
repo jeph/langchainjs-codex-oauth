@@ -15,6 +15,7 @@ In practice, this means you can connect the Codex access attached to your ChatGP
 - Authenticates locally with ChatGPT OAuth instead of an API key.
 - Stores credentials under `~/.langchainjs-codex-oauth/` by default.
 - Refreshes expired access tokens automatically.
+- Enables Codex prompt caching by default with safe, full-context requests.
 - Streams text responses and tool-call chunks from the ChatGPT Codex backend.
 - Supports direct `bindTools(...)`, `withStructuredOutput(...)`, LangChain agents, and LangGraph workflows.
 
@@ -223,8 +224,34 @@ Constructor options:
 - `baseURL`
 - `authPath`
 - `backgroundAuthRefresh`: enabled by default; set `false` to disable, or pass `{ intervalMs, refreshBeforeExpiryMs }`
+- `promptCaching`: enabled by default; set `false` to omit `prompt_cache_key`
+- `promptCacheKey`: optional explicit cache key for repeated calls in the same app/session
 
 Background auth refresh uses an unref'd timer, so it should not keep Node.js running by itself. If you create many clients, call `model.stopBackgroundAuthRefresh()` when a long-lived instance is no longer needed. Use one auth file per process or serialized workflow; multiple processes refreshing the same file can race because refresh tokens may rotate.
+
+Prompt caching is enabled by default. The package still sends the full `instructions` and full conversation `input` on every request; caching only adds Codex's `prompt_cache_key` field so the backend can reuse repeated prompt prefixes when safe. This avoids local truncation or omitted history. If the backend rejects `prompt_cache_key`, the client retries the same request once without only that field.
+
+Disable prompt caching when you do not want repeated requests grouped by a cache key:
+
+```ts
+const uncached = new ChatCodexOAuth({
+  model: "gpt-5.5",
+  promptCaching: false,
+})
+```
+
+Use an explicit key when several model instances should share the same backend prompt-cache bucket for one logical thread or agent run:
+
+```ts
+const model = new ChatCodexOAuth({
+  model: "gpt-5.5",
+  promptCacheKey: "agent-session-123",
+})
+```
+
+Do not share a `promptCacheKey` across unrelated conversations. If no key is provided, each `ChatCodexOAuth` instance gets its own generated key.
+
+You usually do not need a separate warm-up call. The first real request using a given `promptCacheKey` can populate the backend cache, and later requests can reuse any identical prompt prefix. A warm-up call can help only when you have a large, stable system/tool prefix that will be reused many times. If you do warm up the cache, use the same `promptCacheKey`, keep the static prefix identical, and use a tiny user prompt plus low output limits rather than relying on an empty conversation request.
 
 Regular routing is the default. Fast mode must be requested explicitly:
 

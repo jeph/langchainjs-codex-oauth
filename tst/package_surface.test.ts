@@ -90,6 +90,8 @@ describe("package surface", () => {
       reasoningSummary,
       textVerbosity,
       serviceTier: priorityServiceTier,
+      promptCaching: true,
+      promptCacheKey: "surface-cache-key",
       include: [include],
     } satisfies ChatCodexOAuthParams
 
@@ -99,6 +101,8 @@ describe("package surface", () => {
       reasoningSummary,
       textVerbosity,
       serviceTier: priorityServiceTier,
+      promptCaching: false,
+      promptCacheKey: "call-cache-key",
       include: [include],
     } satisfies ChatCodexOAuthCallOptions
 
@@ -118,6 +122,8 @@ describe("package surface", () => {
 
     const clientOptions = {
       authPath: "/tmp/langchainjs-codex-oauth-auth.json",
+      promptCaching: false,
+      promptCacheKey: "client-cache-key",
     } satisfies CodexClientOptions
 
     const request: CodexRequestParams = {
@@ -129,6 +135,8 @@ describe("package surface", () => {
       reasoningSummary,
       textVerbosity,
       serviceTier: priorityServiceTier,
+      promptCaching: true,
+      promptCacheKey: "request-cache-key",
       include: [DEFAULT_INCLUDE[0]!],
     }
 
@@ -149,6 +157,8 @@ describe("package surface", () => {
     expect(model).toBeInstanceOf(ChatCodexOAuth)
     expect(store).toBeInstanceOf(AuthStore)
     expect(client).toBeInstanceOf(CodexClient)
+    expect(client.promptCaching).toBe(false)
+    expect(client.promptCacheKey).toBe("client-cache-key")
     expect(error).toBeInstanceOf(Error)
     expect(credentials.accountId).toBe("acct_123")
     expect(token.expiresAtMs).toBe(456)
