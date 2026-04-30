@@ -113,6 +113,7 @@ interface RequestState {
   reasoningEffort?: ReasoningEffort
   reasoningSummary?: ReasoningSummary
   textVerbosity?: TextVerbosity
+  serviceTier?: CodexRequestParams["serviceTier"]
   include?: CodexInclude[]
   instructions: string
 }
@@ -202,6 +203,8 @@ export class ChatCodexOAuth extends BaseChatModel<
 
   textVerbosity?: TextVerbosity
 
+  serviceTier?: CodexRequestParams["serviceTier"]
+
   include?: CodexInclude[]
 
   timeout: number
@@ -225,6 +228,7 @@ export class ChatCodexOAuth extends BaseChatModel<
     this.reasoningEffort = fields.reasoningEffort ?? "medium"
     this.reasoningSummary = fields.reasoningSummary
     this.textVerbosity = fields.textVerbosity ?? "medium"
+    this.serviceTier = fields.serviceTier
     this.include = fields.include ?? ["reasoning.encrypted_content"]
     this.timeout = fields.timeout ?? (parseFloatEnv(TIMEOUT_ENV) ?? 60) * 1000
     this.maxRetries = fields.maxRetries ?? parseIntegerEnv(MAX_RETRIES_ENV) ?? 2
@@ -264,6 +268,7 @@ export class ChatCodexOAuth extends BaseChatModel<
       "reasoningEffort",
       "reasoningSummary",
       "textVerbosity",
+      "serviceTier",
       "include",
     ]
   }
@@ -302,6 +307,10 @@ export class ChatCodexOAuth extends BaseChatModel<
       text:
         (options?.textVerbosity ?? this.textVerbosity)
           ? { verbosity: options?.textVerbosity ?? this.textVerbosity }
+          : undefined,
+      service_tier:
+        (options?.serviceTier ?? this.serviceTier) === "priority"
+          ? "priority"
           : undefined,
       include: options?.include ?? this.include,
     }
@@ -441,6 +450,7 @@ export class ChatCodexOAuth extends BaseChatModel<
       reasoningEffort: options.reasoningEffort ?? this.reasoningEffort,
       reasoningSummary: options.reasoningSummary ?? this.reasoningSummary,
       textVerbosity: options.textVerbosity ?? this.textVerbosity,
+      serviceTier: options.serviceTier ?? this.serviceTier,
       include: options.include ?? this.include,
       instructions: buildInstructions(messages),
     }
@@ -461,6 +471,7 @@ export class ChatCodexOAuth extends BaseChatModel<
       reasoningEffort: state.reasoningEffort,
       reasoningSummary: state.reasoningSummary,
       textVerbosity: state.textVerbosity,
+      serviceTier: state.serviceTier,
       include: state.include,
       instructions: state.instructions,
       signal,

@@ -146,6 +146,84 @@ describe("CodexClient errors", () => {
 
     expect(capturedBody?.instructions).toBe("You are a router.")
   })
+
+  test("passes explicit priority service tier", async () => {
+    let capturedBody: Record<string, unknown> | undefined
+    const client = new CodexClient({
+      authStore: {
+        load: async () => ({
+          type: "oauth",
+          access: "access",
+          refresh: "refresh",
+          expires: Date.now() + 60_000,
+          accountId: "acct_123",
+        }),
+      } as never,
+      fetchFn: vi.fn(async (_url, init) => {
+        capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+
+        return new Response(
+          streamFromText(
+            'data: {"type":"response.done","response":{"output":[],"status":"completed"}}\n\n',
+          ),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "text/event-stream",
+            },
+          },
+        )
+      }),
+      maxRetries: 0,
+    })
+
+    await client.complete({
+      inputItems: [],
+      model: "gpt-5.5",
+      serviceTier: "priority",
+    })
+
+    expect(capturedBody?.service_tier).toBe("priority")
+  })
+
+  test("omits default service tier because backend default is implicit", async () => {
+    let capturedBody: Record<string, unknown> | undefined
+    const client = new CodexClient({
+      authStore: {
+        load: async () => ({
+          type: "oauth",
+          access: "access",
+          refresh: "refresh",
+          expires: Date.now() + 60_000,
+          accountId: "acct_123",
+        }),
+      } as never,
+      fetchFn: vi.fn(async (_url, init) => {
+        capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+
+        return new Response(
+          streamFromText(
+            'data: {"type":"response.done","response":{"output":[],"status":"completed"}}\n\n',
+          ),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "text/event-stream",
+            },
+          },
+        )
+      }),
+      maxRetries: 0,
+    })
+
+    await client.complete({
+      inputItems: [],
+      model: "gpt-5.5",
+      serviceTier: "default",
+    })
+
+    expect(capturedBody).not.toHaveProperty("service_tier")
+  })
 })
 
 describe("CodexClient background auth refresh", () => {

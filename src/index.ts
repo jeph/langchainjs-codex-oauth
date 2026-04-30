@@ -6,6 +6,7 @@ export type {
   ChatCodexOAuthParams,
   ChatCodexOAuthToolChoice,
   CodexInclude,
+  CodexServiceTier,
   ReasoningEffort,
   ReasoningSummary,
   TextVerbosity,

@@ -144,6 +144,18 @@ function throwIfAborted(signal?: AbortSignal): void {
   throw new Error("Request aborted.")
 }
 
+function normalizeServiceTier(
+  serviceTier: CodexRequestParams["serviceTier"],
+): string | undefined {
+  if (serviceTier === "priority") {
+    return serviceTier
+  }
+
+  // The backend default is selected by omitting service_tier. Sending
+  // service_tier: "default" is currently rejected by the Codex endpoint.
+  return undefined
+}
+
 interface RequestRetryState {
   readonly attempt: number
   readonly includeToolChoice: boolean
@@ -408,6 +420,7 @@ export class CodexClient {
           verbosity: params.textVerbosity,
         }
       : undefined
+    const serviceTier = normalizeServiceTier(params.serviceTier)
 
     return {
       model: normalizeModel(params.model),
@@ -429,6 +442,7 @@ export class CodexClient {
         : {}),
       ...(reasoning ? { reasoning } : {}),
       ...(text ? { text } : {}),
+      ...(serviceTier ? { service_tier: serviceTier } : {}),
     }
   }
 

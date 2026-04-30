@@ -7,6 +7,7 @@ import {
   type ChatCodexOAuthParams,
   type ChatCodexOAuthToolChoice,
   type CodexInclude,
+  type CodexServiceTier,
   type ReasoningEffort,
   type ReasoningSummary,
   type TextVerbosity,
@@ -31,13 +32,20 @@ import {
 } from "../src/client/index.js"
 
 const validReasoningEffort: ReasoningEffort = "xhigh"
-const minimalReasoningEffort: ReasoningEffort = "minimal"
+const defaultServiceTier: CodexServiceTier = "default"
+const priorityServiceTier: CodexServiceTier = "priority"
 
 // @ts-expect-error invalid reasoning effort should be rejected
 const invalidReasoningEffort: ReasoningEffort = "ultra"
 
 // @ts-expect-error max is not a backend-supported reasoning effort
 const invalidMaxReasoningEffort: ReasoningEffort = "max"
+
+// @ts-expect-error minimal is rejected by current ChatGPT Codex models
+const invalidMinimalReasoningEffort: ReasoningEffort = "minimal"
+
+// @ts-expect-error unsupported Codex service tier should be rejected
+const invalidServiceTier: CodexServiceTier = "fast"
 
 // @ts-expect-error invalid text verbosity should be rejected
 const invalidTextVerbosity: TextVerbosity = "xhigh"
@@ -81,6 +89,7 @@ describe("package surface", () => {
       reasoningEffort,
       reasoningSummary,
       textVerbosity,
+      serviceTier: priorityServiceTier,
       include: [include],
     } satisfies ChatCodexOAuthParams
 
@@ -89,6 +98,7 @@ describe("package surface", () => {
       reasoningEffort,
       reasoningSummary,
       textVerbosity,
+      serviceTier: priorityServiceTier,
       include: [include],
     } satisfies ChatCodexOAuthCallOptions
 
@@ -118,6 +128,7 @@ describe("package surface", () => {
       reasoningEffort,
       reasoningSummary,
       textVerbosity,
+      serviceTier: priorityServiceTier,
       include: [DEFAULT_INCLUDE[0]!],
     }
 
@@ -146,8 +157,11 @@ describe("package surface", () => {
     expect(completion.parsed.content).toBe("ok")
     expect(REDIRECT_URI).toContain("localhost")
     expect(validReasoningEffort).toBe("xhigh")
-    expect(minimalReasoningEffort).toBe("minimal")
+    expect(defaultServiceTier).toBe("default")
+    expect(priorityServiceTier).toBe("priority")
     expect(invalidReasoningSummary).toBe("brief")
     expect(invalidMaxReasoningEffort).toBe("max")
+    expect(invalidMinimalReasoningEffort).toBe("minimal")
+    expect(invalidServiceTier).toBe("fast")
   })
 })

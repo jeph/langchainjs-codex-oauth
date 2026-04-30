@@ -11,6 +11,7 @@ import type {
 export type {
   CodexAllowedToolsChoice,
   CodexInclude,
+  CodexServiceTier,
   CodexToolReference,
   ReasoningEffort,
   ReasoningSummary,
@@ -19,6 +20,7 @@ export type {
 import type {
   CodexToolChoice,
   CodexInclude,
+  CodexServiceTier,
   ReasoningEffort,
   ReasoningSummary,
   TextVerbosity,
@@ -42,6 +44,7 @@ export interface ChatCodexOAuthFields {
   reasoningEffort?: ReasoningEffort
   reasoningSummary?: ReasoningSummary
   textVerbosity?: TextVerbosity
+  serviceTier?: CodexServiceTier
   include?: CodexInclude[]
 }
 
