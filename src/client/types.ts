@@ -12,6 +12,8 @@ export type TextVerbosity = "low" | "medium" | "high"
 
 export type CodexServiceTier = "default" | "priority"
 
+export type ImageDetail = "auto" | "low" | "high" | "original"
+
 export type CodexInclude = "reasoning.encrypted_content" | OpenString
 
 export interface CodexFunctionTool {
@@ -66,17 +68,28 @@ export interface InputTextBlock {
   text: string
 }
 
+export interface InputImageBlock {
+  type: "input_image"
+  image_url: string
+  detail?: ImageDetail
+}
+
 export interface OutputTextBlock {
   type: "output_text"
   text: string
 }
+
+export type MessageContentBlock =
+  | InputTextBlock
+  | InputImageBlock
+  | OutputTextBlock
 
 export type MessageTextBlock = InputTextBlock | OutputTextBlock
 
 export interface InputMessageItem {
   type: "message"
   role: MessageRole
-  content: MessageTextBlock[]
+  content: MessageContentBlock[]
 }
 
 export interface InputFunctionCallItem {

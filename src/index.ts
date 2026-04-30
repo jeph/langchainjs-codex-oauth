@@ -7,6 +7,7 @@ export type {
   ChatCodexOAuthToolChoice,
   CodexInclude,
   CodexServiceTier,
+  ImageDetail,
   ReasoningEffort,
   ReasoningSummary,
   TextVerbosity,

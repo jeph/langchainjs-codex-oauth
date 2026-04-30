@@ -125,6 +125,29 @@ describe.skipIf(!hasAuth)("ChatCodexOAuth live integration", () => {
     expect(textOf(result.content).trim()).toBe(marker)
   })
 
+  test("invokes the live backend with image input", async () => {
+    const marker = "LCJS_IMAGE_INPUT_OK"
+    const model = createModel({ maxTokens: 40 })
+
+    const result = await model.invoke([
+      new HumanMessage({
+        content: [
+          {
+            type: "text",
+            text: `Inspect the attached image, then reply with exactly ${marker} and nothing else.`,
+          },
+          {
+            type: "image_url",
+            image_url:
+              "https://raw.githubusercontent.com/github/explore/main/topics/python/python.png",
+          },
+        ],
+      }),
+    ])
+
+    expect(textOf(result.content).trim()).toBe(marker)
+  })
+
   test("streams text from the live backend", async () => {
     const model = createModel({ maxTokens: 80 })
     const parts: string[] = []

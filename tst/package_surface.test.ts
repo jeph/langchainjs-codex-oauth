@@ -8,6 +8,7 @@ import {
   type ChatCodexOAuthToolChoice,
   type CodexInclude,
   type CodexServiceTier,
+  type ImageDetail,
   type ReasoningEffort,
   type ReasoningSummary,
   type TextVerbosity,
@@ -59,6 +60,7 @@ describe("package surface", () => {
     const reasoningSummary: ReasoningSummary = "concise"
     const textVerbosity: TextVerbosity = "high"
     const include: CodexInclude = "reasoning.encrypted_content"
+    const imageDetail: ImageDetail = "original"
     const toolRef: CodexToolReference = {
       type: "function",
       name: "lookup_inventory",
@@ -164,6 +166,7 @@ describe("package surface", () => {
     expect(token.expiresAtMs).toBe(456)
     expect(request.tools).toEqual(backendTools)
     expect(request.include).toEqual(["reasoning.encrypted_content"])
+    expect(imageDetail).toBe("original")
     expect(completion.parsed.content).toBe("ok")
     expect(REDIRECT_URI).toContain("localhost")
     expect(validReasoningEffort).toBe("xhigh")

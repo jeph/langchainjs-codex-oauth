@@ -13,6 +13,7 @@ export type {
   CodexInclude,
   CodexServiceTier,
   CodexToolReference,
+  ImageDetail,
   ReasoningEffort,
   ReasoningSummary,
   TextVerbosity,
