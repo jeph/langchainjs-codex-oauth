@@ -45,6 +45,8 @@ export interface ChatCodexOAuthFields {
   reasoningSummary?: ReasoningSummary
   textVerbosity?: TextVerbosity
   serviceTier?: CodexServiceTier
+  promptCaching?: boolean
+  promptCacheKey?: string
   include?: CodexInclude[]
 }
 

@@ -114,6 +114,8 @@ interface RequestState {
   reasoningSummary?: ReasoningSummary
   textVerbosity?: TextVerbosity
   serviceTier?: CodexRequestParams["serviceTier"]
+  promptCaching?: boolean
+  promptCacheKey?: string
   include?: CodexInclude[]
   instructions: string
 }
@@ -205,6 +207,10 @@ export class ChatCodexOAuth extends BaseChatModel<
 
   serviceTier?: CodexRequestParams["serviceTier"]
 
+  promptCaching: boolean
+
+  promptCacheKey?: string
+
   include?: CodexInclude[]
 
   timeout: number
@@ -229,6 +235,8 @@ export class ChatCodexOAuth extends BaseChatModel<
     this.reasoningSummary = fields.reasoningSummary
     this.textVerbosity = fields.textVerbosity ?? "medium"
     this.serviceTier = fields.serviceTier
+    this.promptCaching = fields.promptCaching ?? true
+    this.promptCacheKey = fields.promptCacheKey
     this.include = fields.include ?? ["reasoning.encrypted_content"]
     this.timeout = fields.timeout ?? (parseFloatEnv(TIMEOUT_ENV) ?? 60) * 1000
     this.maxRetries = fields.maxRetries ?? parseIntegerEnv(MAX_RETRIES_ENV) ?? 2
@@ -244,6 +252,8 @@ export class ChatCodexOAuth extends BaseChatModel<
       timeoutMs: this.timeout,
       maxRetries: this.maxRetries,
       backgroundAuthRefresh: this.backgroundAuthRefresh,
+      promptCaching: this.promptCaching,
+      promptCacheKey: this.promptCacheKey,
     })
   }
 
@@ -269,6 +279,8 @@ export class ChatCodexOAuth extends BaseChatModel<
       "reasoningSummary",
       "textVerbosity",
       "serviceTier",
+      "promptCaching",
+      "promptCacheKey",
       "include",
     ]
   }
@@ -312,6 +324,10 @@ export class ChatCodexOAuth extends BaseChatModel<
         (options?.serviceTier ?? this.serviceTier) === "priority"
           ? "priority"
           : undefined,
+      prompt_cache_key:
+        (options?.promptCaching ?? this.promptCaching) === false
+          ? undefined
+          : (options?.promptCacheKey ?? this.promptCacheKey),
       include: options?.include ?? this.include,
     }
   }
@@ -451,6 +467,8 @@ export class ChatCodexOAuth extends BaseChatModel<
       reasoningSummary: options.reasoningSummary ?? this.reasoningSummary,
       textVerbosity: options.textVerbosity ?? this.textVerbosity,
       serviceTier: options.serviceTier ?? this.serviceTier,
+      promptCaching: options.promptCaching,
+      promptCacheKey: options.promptCacheKey,
       include: options.include ?? this.include,
       instructions: buildInstructions(messages),
     }
@@ -472,6 +490,8 @@ export class ChatCodexOAuth extends BaseChatModel<
       reasoningSummary: state.reasoningSummary,
       textVerbosity: state.textVerbosity,
       serviceTier: state.serviceTier,
+      promptCaching: state.promptCaching,
+      promptCacheKey: state.promptCacheKey,
       include: state.include,
       instructions: state.instructions,
       signal,

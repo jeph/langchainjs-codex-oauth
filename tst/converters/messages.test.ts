@@ -37,18 +37,16 @@ describe("message conversion", () => {
   })
 
   test("expands assistant tool calls and tool outputs", () => {
-    const items = toInputItems(
-      [
-        new AIMessage({
-          content: "Working on it.",
-          tool_calls: [{ name: "lookup", args: { id: 1 } }],
-        }),
-        new ToolMessage({
-          content: "42",
-          tool_call_id: "call_1",
-        }),
-      ],
-    )
+    const items = toInputItems([
+      new AIMessage({
+        content: "Working on it.",
+        tool_calls: [{ name: "lookup", args: { id: 1 } }],
+      }),
+      new ToolMessage({
+        content: "42",
+        tool_call_id: "call_1",
+      }),
+    ])
 
     expect(items[0]).toMatchObject({ type: "message", role: "assistant" })
     expect(items[1]).toMatchObject({ type: "function_call", name: "lookup" })

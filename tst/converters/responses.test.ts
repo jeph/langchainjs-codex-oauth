@@ -78,4 +78,32 @@ describe("response conversion", () => {
       total_tokens: 7,
     })
   })
+
+  test("extracts cached input and reasoning token details", () => {
+    expect(
+      extractUsageMetadata({
+        usage: {
+          input_tokens: 30,
+          output_tokens: 12,
+          total_tokens: 42,
+          input_tokens_details: {
+            cached_tokens: 20,
+          },
+          output_tokens_details: {
+            reasoning_tokens: 7,
+          },
+        },
+      }),
+    ).toEqual({
+      input_tokens: 30,
+      output_tokens: 12,
+      total_tokens: 42,
+      input_token_details: {
+        cache_read: 20,
+      },
+      output_token_details: {
+        reasoning: 7,
+      },
+    })
+  })
 })

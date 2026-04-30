@@ -192,6 +192,27 @@ export function extractUsageMetadata(
     (inputTokens !== undefined && outputTokens !== undefined
       ? inputTokens + outputTokens
       : undefined)
+  const inputTokenDetails = isRecord(usage.input_tokens_details)
+    ? {
+        ...(asInteger(usage.input_tokens_details.cached_tokens) !== undefined
+          ? {
+              cache_read: asInteger(usage.input_tokens_details.cached_tokens),
+            }
+          : {}),
+      }
+    : undefined
+  const outputTokenDetails = isRecord(usage.output_tokens_details)
+    ? {
+        ...(asInteger(usage.output_tokens_details.reasoning_tokens) !==
+        undefined
+          ? {
+              reasoning: asInteger(
+                usage.output_tokens_details.reasoning_tokens,
+              ),
+            }
+          : {}),
+      }
+    : undefined
 
   if (
     inputTokens === undefined ||
@@ -205,6 +226,12 @@ export function extractUsageMetadata(
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     total_tokens: totalTokens,
+    ...(inputTokenDetails && Object.keys(inputTokenDetails).length > 0
+      ? { input_token_details: inputTokenDetails }
+      : {}),
+    ...(outputTokenDetails && Object.keys(outputTokenDetails).length > 0
+      ? { output_token_details: outputTokenDetails }
+      : {}),
   }
 }
 

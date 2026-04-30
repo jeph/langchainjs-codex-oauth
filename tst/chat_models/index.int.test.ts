@@ -100,6 +100,31 @@ describe.skipIf(!hasAuth)("ChatCodexOAuth live integration", () => {
     expect(textOf(result.content).trim()).toBe(marker)
   })
 
+  test("invokes the live backend with explicit prompt cache key", async () => {
+    const marker = "LCJS_PROMPT_CACHE_KEY_OK"
+    const model = createModel({
+      maxTokens: 40,
+      promptCacheKey: "lcjs-live-int-prompt-cache-key",
+    })
+
+    const result = await model.invoke([
+      new HumanMessage(`Reply with exactly ${marker} and nothing else.`),
+    ])
+
+    expect(textOf(result.content).trim()).toBe(marker)
+  })
+
+  test("invokes the live backend with prompt caching disabled", async () => {
+    const marker = "LCJS_PROMPT_CACHE_DISABLED_OK"
+    const model = createModel({ maxTokens: 40, promptCaching: false })
+
+    const result = await model.invoke([
+      new HumanMessage(`Reply with exactly ${marker} and nothing else.`),
+    ])
+
+    expect(textOf(result.content).trim()).toBe(marker)
+  })
+
   test("streams text from the live backend", async () => {
     const model = createModel({ maxTokens: 80 })
     const parts: string[] = []

@@ -134,6 +134,8 @@ export interface CodexRequestParams {
   reasoningSummary?: ReasoningSummary
   textVerbosity?: TextVerbosity
   serviceTier?: CodexServiceTier
+  promptCaching?: boolean
+  promptCacheKey?: string
   include?: CodexInclude[]
   instructions?: string
   signal?: AbortSignal

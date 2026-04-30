@@ -2,6 +2,7 @@ import {
   AIMessage,
   HumanMessage,
   SystemMessage,
+  ToolMessage,
 } from "@langchain/core/messages"
 import { describe, expect, test, vi } from "vitest"
 import { z } from "zod"
@@ -118,6 +119,100 @@ describe("ChatCodexOAuth", () => {
       serviceTier: "priority",
       include: ["custom.include"],
     })
+  })
+
+  test("configures prompt caching on the underlying client", () => {
+    const defaultModel = new ChatCodexOAuth({ model: "gpt-5.5" })
+    const disabledModel = new ChatCodexOAuth({
+      model: "gpt-5.5",
+      promptCaching: false,
+    })
+    const keyedModel = new ChatCodexOAuth({
+      model: "gpt-5.5",
+      promptCacheKey: "chat-cache-key",
+    })
+
+    expect(defaultModel.client.promptCaching).toBe(true)
+    expect(defaultModel.client.promptCacheKey).toEqual(
+      expect.stringMatching(/^lcjs-codex-/u),
+    )
+    expect(disabledModel.client.promptCaching).toBe(false)
+    expect(keyedModel.client.promptCacheKey).toBe("chat-cache-key")
+  })
+
+  test("passes per-call prompt cache overrides", async () => {
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
+    const captured: Record<string, unknown>[] = []
+
+    vi.spyOn(model.client, "completeWithResponse").mockImplementation(
+      async (input) => {
+        captured.push(input as unknown as Record<string, unknown>)
+        return {
+          parsed: {
+            content: "ok",
+            toolCalls: [],
+            invalidToolCalls: [],
+          },
+          response: { output: [], status: "completed" },
+        }
+      },
+    )
+
+    await model.invoke([new HumanMessage("hi")], {
+      promptCaching: false,
+    })
+    await model.invoke([new HumanMessage("hi")], {
+      promptCacheKey: "call-cache-key",
+    })
+
+    expect(captured[0]).toMatchObject({ promptCaching: false })
+    expect(captured[1]).toMatchObject({ promptCacheKey: "call-cache-key" })
+  })
+
+  test("prompt caching does not mutate converted conversation context", async () => {
+    const messages = [
+      new SystemMessage("You are a careful agent."),
+      new HumanMessage("Find the inventory count."),
+      new AIMessage({
+        content: "I will look it up.",
+        tool_calls: [
+          {
+            id: "call_lookup",
+            name: "lookup_inventory",
+            args: { sku: "abc" },
+          },
+        ],
+      }),
+      new ToolMessage({
+        content: "42 units",
+        tool_call_id: "call_lookup",
+      }),
+      new HumanMessage("Now answer from the tool result."),
+    ]
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
+    const captured: Record<string, unknown>[] = []
+
+    vi.spyOn(model.client, "completeWithResponse").mockImplementation(
+      async (input) => {
+        captured.push(input as unknown as Record<string, unknown>)
+        return {
+          parsed: {
+            content: "ok",
+            toolCalls: [],
+            invalidToolCalls: [],
+          },
+          response: { output: [], status: "completed" },
+        }
+      },
+    )
+
+    await model.invoke(messages, { promptCacheKey: "call-cache-key" })
+    await model.invoke(messages, { promptCaching: false })
+
+    expect(captured[0]?.promptCacheKey).toBe("call-cache-key")
+    expect(captured[1]?.promptCaching).toBe(false)
+    expect(captured[0]?.instructions).toBe(captured[1]?.instructions)
+    expect(captured[0]?.inputItems).toEqual(captured[1]?.inputItems)
   })
 
   test("recovers streamed text on invoke when terminal output is empty", async () => {
