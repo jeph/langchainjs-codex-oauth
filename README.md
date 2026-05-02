@@ -128,6 +128,86 @@ console.log(result.text)
 
 `ChatCodexOAuth` also supports `.stream(...)`, `.batch(...)`, `.bindTools(...)`, and `.withStructuredOutput(...)`.
 
+## Image Input
+
+User messages can include image URLs or base64 data URLs using LangChain's multimodal content format:
+
+```ts
+import { HumanMessage } from "@langchain/core/messages"
+import { ChatCodexOAuth } from "langchainjs-codex-oauth"
+
+const model = new ChatCodexOAuth({ model: "gpt-5.5" })
+
+const result = await model.invoke([
+  new HumanMessage({
+    content: [
+      { type: "text", text: "What is in this image?" },
+      {
+        type: "image_url",
+        image_url: "https://example.com/screenshot.png",
+      },
+    ],
+  }),
+])
+
+console.log(result.text)
+```
+
+OpenAI-style `image_url` blocks with detail are also supported:
+
+```ts
+new HumanMessage({
+  content: [
+    { type: "text", text: "Describe this image briefly." },
+    {
+      type: "image_url",
+      image_url: {
+        url: "data:image/png;base64,iVBORw0KGgo...",
+        detail: "high",
+      },
+    },
+  ],
+})
+```
+
+The newer LangChain standard image block shape is supported too:
+
+```ts
+new HumanMessage({
+  content: [
+    { type: "text", text: "What changed in this screenshot?" },
+    {
+      type: "image",
+      url: "https://example.com/screenshot.png",
+    },
+  ],
+})
+```
+
+Base64 image blocks must include an image MIME type:
+
+```ts
+new HumanMessage({
+  content: [
+    { type: "text", text: "What is shown here?" },
+    {
+      type: "image",
+      data: "iVBORw0KGgo...",
+      mimeType: "image/png",
+    },
+  ],
+})
+```
+
+Notes:
+
+- Image inputs are converted to Codex `input_image` blocks and are not stringified into text.
+- Text and image parts are sent in the order you provide them.
+- Images are supported only in user/human messages in this release.
+- Tool output images are not supported yet; that will be handled separately.
+- Local file paths are not read automatically. Pass a public URL, data URL, or base64 data with `mimeType`.
+- Images consume tokens/quota, and `detail` support may vary by model/backend.
+
 ## Advanced imports
 
 If you need the lower-level auth store or raw Codex client, import them from subpaths:

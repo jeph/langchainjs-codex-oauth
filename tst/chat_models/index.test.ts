@@ -81,6 +81,55 @@ describe("ChatCodexOAuth", () => {
     expect(captured?.instructions).toBe("")
   })
 
+  test("passes image content as input_image blocks", async () => {
+    const model = new ChatCodexOAuth({ model: "gpt-5.5" })
+    let captured: Record<string, unknown> | undefined
+
+    vi.spyOn(model.client, "completeWithResponse").mockImplementation(
+      async (input) => {
+        captured = input as unknown as Record<string, unknown>
+        return {
+          parsed: {
+            content: "ok",
+            toolCalls: [],
+            invalidToolCalls: [],
+          },
+          response: { output: [], status: "completed" },
+        }
+      },
+    )
+
+    await model.invoke([
+      new HumanMessage({
+        content: [
+          { type: "text", text: "What changed?" },
+          {
+            type: "image_url",
+            image_url: {
+              url: "data:image/png;base64,abc123",
+              detail: "high",
+            },
+          },
+        ],
+      }),
+    ])
+
+    expect(captured?.inputItems).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "What changed?" },
+          {
+            type: "input_image",
+            image_url: "data:image/png;base64,abc123",
+            detail: "high",
+          },
+        ],
+      },
+    ])
+  })
+
   test("passes per-call request overrides on invoke", async () => {
     const model = new ChatCodexOAuth({
       model: "gpt-5.5",

@@ -20,6 +20,8 @@ export type {
   CodexToolCall,
   CodexToolChoice,
   CompletionResult,
+  ImageDetail,
+  InputImageBlock,
   ParsedAssistantMessage,
   ParsedMetadata,
   ReasoningEffort,
